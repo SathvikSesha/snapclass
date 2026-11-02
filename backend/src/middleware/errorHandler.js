@@ -28,10 +28,14 @@ export function globalErrorHandler(err, req, res, next) {
     console.error(err);
   }
 
-  res.status(statusCode).json({
+  const responsePayload = {
     success: false,
     message:
       err.message ||
       (statusCode >= 500 ? 'Internal server error' : 'Something went wrong.'),
-  });
+  };
+  if (err.code && typeof err.code === 'string') {
+    responsePayload.code = err.code;
+  }
+  res.status(statusCode).json(responsePayload);
 }
