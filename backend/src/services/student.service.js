@@ -10,6 +10,17 @@ import {
 import { createRefreshSession } from './session.service.js';
 import { extractFaceEmbedding } from './ai-client.service.js';
 import { pool } from '../config/db.js';
+import { getStudentDashboardData } from '../repositories/student.repository.js';
+import {
+  getStudentSubjectCatalog,
+  getStudentRegistrationWindow,
+  registerStudentForSubject,
+} from '../repositories/student.repository.js';
+
+import {
+  getStudentAttendanceSummary,
+  getStudentAttendanceHistory,
+} from '../repositories/student.repository.js';
 
 export async function registerStudent({
   fullName,
@@ -227,3 +238,145 @@ export async function startStudentFaceLogin(file) {
   };
 }
 
+export const getStudentDashboard = async (userId) => {
+  const dashboard = await getStudentDashboardData(userId);
+
+  if (!dashboard) {
+    const error = new Error(
+      'Student profile not found or account is not active.'
+    );
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    profile: dashboard.student,
+
+    summary: {
+      registeredSubjects: dashboard.registeredSubjects,
+      registeredCredits: null,
+      creditLimit: 30,
+      remainingCredits: null,
+    },
+
+    registration: {
+      status: 'NOT_CONFIGURED',
+      startsAt: null,
+      endsAt: null,
+    },
+
+    recentActivity: dashboard.recentActivity,
+  };
+};
+
+
+export const getStudentSubjects = async (userId) => {
+  const subjects = await getStudentSubjectCatalog(userId);
+
+  if (subjects === null) {
+    const error = new Error('Active student profile not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const registeredSubjects = subjects.filter(
+    (subject) => subject.isRegistered
+  );
+
+  const registeredCredits = registeredSubjects.reduce(
+    (total, subject) => total + subject.credits,
+    0
+  );
+
+  const window = await getStudentRegistrationWindow();
+
+  return {
+    totalSubjects: subjects.length,
+    registeredSubjects: registeredSubjects.length,
+    unregisteredSubjects: subjects.length - registeredSubjects.length,
+    registeredCredits,
+    creditLimit: 30,
+    remainingCredits: Math.max(0, 30 - registeredCredits),
+    registrationWindow: {
+      status: window?.status ?? 'NOT_SCHEDULED',
+      startsAt: window?.startsAt ?? null,
+      endsAt: window?.endsAt ?? null,
+    },
+    subjects,
+  };
+};
+
+
+
+export const registerForSubject = async (userId, subjectId) => {
+  const id = Number(subjectId);
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    const error = new Error('Invalid subject ID.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return registerStudentForSubject({
+    userId,
+    subjectId: id,
+    creditLimit: 30,
+  });
+};
+
+
+
+const validateAttendanceSubjectId = (subjectId) => {
+  const id = Number(subjectId);
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    const error = new Error('Invalid subject ID.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return id;
+};
+
+const handleAttendanceAccessError = (result) => {
+  if (result.error === 'SUBJECT_NOT_FOUND') {
+    const error = new Error('Subject not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (result.error === 'NOT_ENROLLED') {
+    const error = new Error(
+      'You are not registered for this subject.'
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return result;
+};
+
+export const getStudentAttendance = async (userId, subjectId) => {
+  const id = validateAttendanceSubjectId(subjectId);
+
+  const result = await getStudentAttendanceSummary({
+    userId,
+    subjectId: id,
+  });
+
+  return handleAttendanceAccessError(result);
+};
+
+export const getStudentAttendanceHistoryData = async (
+  userId,
+  subjectId
+) => {
+  const id = validateAttendanceSubjectId(subjectId);
+
+  const result = await getStudentAttendanceHistory({
+    userId,
+    subjectId: id,
+  });
+
+  return handleAttendanceAccessError(result);
+};
