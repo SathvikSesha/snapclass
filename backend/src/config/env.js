@@ -13,6 +13,8 @@ export const env = {
   refreshCookieName: process.env.REFRESH_COOKIE_NAME || 'snapclass_refresh',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   cookieSameSite: process.env.COOKIE_SAME_SITE || 'lax',
+  aiServiceUrl: process.env.AI_SERVICE_URL,
+
 
   database: {
     host: process.env.DB_HOST,
