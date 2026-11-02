@@ -23,7 +23,7 @@ import {
 } from '../controllers/auth.controller.js';
 
 import { registerStudentController } from '../controllers/student.controller.js';
-import { studentFaceUpload } from '../middleware/student-upload.js';
+import { studentFaceUpload } from '../middleware/upload.js';
 
 import {
   studentLoginController,
