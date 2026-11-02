@@ -4,10 +4,12 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler.js';
-
+import facultyRoutes from './routes/faculty.routes.js';
 
 import { env } from './config/env.js';
 import authRoutes from './routes/auth.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import studentRoutes from './routes/student.routes.js';
 
 const app = express();
 
@@ -38,6 +40,9 @@ const globalLimiter = rateLimit({
 app.use(globalLimiter);
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/faculty', facultyRoutes);
+app.use('/api/student', studentRoutes);
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({
