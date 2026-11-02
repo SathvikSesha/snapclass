@@ -6,6 +6,15 @@ import {
   startStudentFaceLogin
 } from '../services/student.service.js';
 import { setAuthCookies } from '../utils/cookies.js';
+import { getStudentDashboard } from '../services/student.service.js';
+import {
+  getStudentSubjects,
+} from '../services/student.service.js';
+import { registerForSubject } from '../services/student.service.js';
+import {
+  getStudentAttendance,
+  getStudentAttendanceHistoryData,
+} from '../services/student.service.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -200,3 +209,153 @@ export async function studentFaceLoginController(req, res, next) {
   }
 }
 
+export const getStudentDashboardController = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const rawUserId = req.user?.userId ?? req.user?.sub;
+    const userId = Number(rawUserId);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const data = await getStudentDashboard(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student dashboard retrieved successfully.',
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStudentSubjectsController = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const userId = Number(
+      req.user?.userId ?? req.user?.sub
+    );
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const data = await getStudentSubjects(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Subject catalog retrieved successfully.',
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const registerForSubjectController = async (req, res, next) => {
+  try {
+    const userId = Number(req.user?.userId ?? req.user?.sub);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const data = await registerForSubject(
+      userId,
+      req.params.subjectId
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Subject registered successfully.',
+      data,
+    });
+  } catch (error) {
+    if (error.code) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
+
+export const getStudentAttendanceController = async (req, res, next) => {
+  try {
+    const userId = Number(req.user?.userId ?? req.user?.sub);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const data = await getStudentAttendance(
+      userId,
+      req.params.subjectId
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Attendance summary retrieved successfully.',
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStudentAttendanceHistoryController = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const userId = Number(req.user?.userId ?? req.user?.sub);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const data = await getStudentAttendanceHistoryData(
+      userId,
+      req.params.subjectId
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Attendance history retrieved successfully.',
+      data: {
+        records: data,
+        totalRecords: data.length,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
