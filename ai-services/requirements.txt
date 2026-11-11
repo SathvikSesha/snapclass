@@ -1,6 +1,13 @@
+
+# API
 fastapi
 uvicorn[standard]
 python-multipart
+
+# Configuration
+python-dotenv
+
+# Face recognition
 numpy
 Pillow
 scikit-learn
@@ -8,5 +15,17 @@ dlib-bin
 git+https://github.com/ageitgey/face_recognition_models
 setuptools<70.0.0
 
+# Voice recognition
 librosa
 resemblyzer
+
+# RAG and vector database
+sentence-transformers
+qdrant-client
+
+# Document extraction
+pypdf
+pdf2image
+pytesseract
+python-docx
+python-pptx
