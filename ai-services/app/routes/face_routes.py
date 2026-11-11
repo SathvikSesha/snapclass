@@ -4,7 +4,9 @@ from io import BytesIO
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
+from starlette.concurrency import run_in_threadpool
 
+from app.config import settings
 from app.services.face_service import (
     extract_face_embedding,
     extract_multiple_face_embeddings,
@@ -13,10 +15,10 @@ from app.services.face_service import (
 
 router = APIRouter(prefix="/api/face", tags=["Face"])
 
-MAX_IMAGE_SIZE = 5 * 1024 * 1024
-MAX_IMAGES = 4
+MAX_IMAGE_SIZE = settings.face_max_image_size_bytes
+MAX_IMAGES = settings.FACE_MAX_IMAGES
 MAX_TOTAL_SIZE = MAX_IMAGES * MAX_IMAGE_SIZE
-MAX_IMAGE_PIXELS = 25_000_000
+MAX_IMAGE_PIXELS = settings.FACE_MAX_IMAGE_PIXELS
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -51,7 +53,7 @@ async def create_face_embedding(
                 )
             pil_image = image.convert("RGB")
 
-        embedding = extract_face_embedding(pil_image)
+        embedding = await run_in_threadpool(extract_face_embedding, pil_image)
 
         return {
             "success": True,
@@ -176,11 +178,13 @@ async def recognize_classroom_faces(
 
                 pil_image = image.convert("RGB")
 
-            all_face_embeddings.extend(
-                extract_multiple_face_embeddings(pil_image)
+            embeddings = await run_in_threadpool(
+                extract_multiple_face_embeddings, pil_image
             )
+            all_face_embeddings.extend(embeddings)
 
-        matches = recognize_face_embeddings(
+        matches = await run_in_threadpool(
+            recognize_face_embeddings,
             all_face_embeddings,
             students,
             threshold=0.50,
