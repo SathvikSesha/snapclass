@@ -8,3 +8,7 @@ env/
 venv/
 *.log
 
+
+qdrant_data/
+qdrant_test_data/
+
