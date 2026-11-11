@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+testing
+qdrant_data
+qdrant_test_data
+.git
+.gitignore
+*.log
+
