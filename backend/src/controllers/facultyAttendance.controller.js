@@ -1,6 +1,7 @@
-
 import {
-  getFacultyAttendanceDates,  saveFacultyAttendance
+  getFacultyAttendanceDates,
+  getFacultyAttendanceStudents,
+  saveFacultyAttendance,
 } from '../services/facultyAttendance.service.js';
 
 export const getFacultyAttendanceDatesController = async (
@@ -41,11 +42,6 @@ export const getFacultyAttendanceDatesController = async (
     next(error);
   }
 };
-
-
-import {
-  getFacultyAttendanceStudents,
-} from '../services/facultyAttendance.service.js';
 
 export const getFacultyAttendanceStudentsController = async (
   req,
@@ -111,7 +107,7 @@ export const getFacultyAttendanceStudentsController = async (
   } catch (error) {
     next(error);
   }
-}
+};
 
 export const saveFacultyAttendanceController = async (
   req,
@@ -138,11 +134,14 @@ export const saveFacultyAttendanceController = async (
       });
     }
 
+    const attendanceDate = req.body?.attendanceDate || req.body?.date;
+    const students = req.body?.students || req.body?.records;
+
     const result = await saveFacultyAttendance({
       userId,
       subjectId,
-      attendanceDate: req.body?.attendanceDate,
-      students: req.body?.students,
+      attendanceDate,
+      students,
     });
 
     return res.status(200).json({

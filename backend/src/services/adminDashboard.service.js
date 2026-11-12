@@ -6,11 +6,13 @@ export const getAdminDashboard = async () => {
         studentCount,
         facultyCount,
         subjectCount,
+        pendingRequestsCount,
         recentLogs,
     ] = await Promise.all([
         adminDashboardRepository.getStudentCount(),
         adminDashboardRepository.getFacultyCount(),
         adminDashboardRepository.getSubjectCount(),
+        adminDashboardRepository.getPendingRequestsCount(),
         adminDashboardRepository.getRecentLogs(),
     ]);
 
@@ -19,6 +21,11 @@ export const getAdminDashboard = async () => {
             students: studentCount,
             faculty: facultyCount,
             subjects: subjectCount,
+            pendingRequests: pendingRequestsCount,
+            totalStudents: studentCount,
+            totalFaculty: facultyCount,
+            totalSubjects: subjectCount,
+            totalPendingRequests: pendingRequestsCount,
         },
         recentLogs,
     };

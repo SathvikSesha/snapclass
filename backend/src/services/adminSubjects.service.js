@@ -7,6 +7,7 @@ export const createSubject = async ({
   subjectCode,
   name,
   description,
+  credits = 3,
   adminUserId,
   adminName,
 }) => {
@@ -16,7 +17,7 @@ export const createSubject = async ({
     await connection.beginTransaction();
 
     const subjectId = await subjectsRepository.createSubject(
-      { subjectCode, name, description, adminUserId },
+      { subjectCode, name, description, credits, adminUserId },
       connection
     );
 
@@ -24,7 +25,7 @@ export const createSubject = async ({
       actorUserId: adminUserId,
       actorName: adminName,
       eventType: 'SUBJECT_CREATED',
-      message: `Created subject: ${name} (${subjectCode})`,
+      message: `Created subject: ${name} (${subjectCode}) [Credits: ${credits}]`,
       entityType: 'SUBJECT',
       entityId: subjectId,
       connection,
@@ -32,7 +33,7 @@ export const createSubject = async ({
 
     await connection.commit();
 
-    return { id: subjectId, subjectCode, name, description: description ?? null };
+    return { id: subjectId, subjectCode, name, description: description ?? null, credits: Number(credits) };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -46,8 +47,8 @@ export const getSubjects = async () => {
 };
 
 export const getRequests = async (status = 'PENDING') => {
-  const normalizedStatus = String(status).trim().toUpperCase();
-  const allowedStatuses = ['PENDING', 'APPROVED', 'REJECTED'];
+  const normalizedStatus = String(status || 'PENDING').trim().toUpperCase();
+  const allowedStatuses = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 
   if (!allowedStatuses.includes(normalizedStatus)) {
     const error = new Error('Invalid request status');
@@ -89,14 +90,20 @@ export const reviewSubjectRequest = async ({
       throw error;
     }
 
-    if (request.status !== 'PENDING') {
-      const error = new Error('This request has already been reviewed');
+    if (request.status === normalizedDecision) {
+      const error = new Error(`This request is already ${normalizedDecision.toLowerCase()}`);
       error.statusCode = 409;
       throw error;
     }
 
     if (normalizedDecision === 'APPROVED') {
       await requestsRepository.approveFacultyAssignment(
+        request.subject_id,
+        request.faculty_id,
+        connection
+      );
+    } else if (normalizedDecision === 'REJECTED') {
+      await requestsRepository.revokeFacultyAssignment(
         request.subject_id,
         request.faculty_id,
         connection

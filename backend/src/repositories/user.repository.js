@@ -34,3 +34,16 @@ export async function findUserForAuthentication(email) {
 
   return rows[0] ?? null;
 }
+
+
+export async function findUserById(userId) {
+  const [rows] = await pool.execute(
+    `SELECT user_id, email, role, status, email_verified
+     FROM users
+     WHERE user_id = ?
+     LIMIT 1`,
+    [userId]
+  );
+
+  return rows[0] ?? null;
+}

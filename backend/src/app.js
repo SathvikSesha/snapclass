@@ -10,6 +10,7 @@ import { env } from './config/env.js';
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import studentRoutes from './routes/student.routes.js';
+import materialsRoutes from './routes/materials.routes.js';
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api', materialsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({

@@ -1,5 +1,8 @@
-import { registerAdmin,startAdminLogin,completeAdminMfa,sendEmailVerificationOtp,verifyUserEmail } from '../services/auth.service.js';
-import {setAuthCookies,setAccessCookie} from '../utils/cookies.js';
+import { findUserById } from '../repositories/user.repository.js';
+import { registerAdmin,startAdminLogin,completeAdminMfa,sendEmailVerificationOtp,verifyUserEmail, refreshAuthSession } from '../services/auth.service.js';
+import {setAuthCookies,setAccessCookie, clearAuthCookies} from '../utils/cookies.js';
+import { revokeRefreshSession } from '../services/session.service.js';
+import { env } from '../config/env.js';
 import { registerFaculty,startFacultyLogin,completeFacultyMfa } from '../services/auth.service.js';
 
 export async function registerAdminController(req, res, next) {
@@ -247,6 +250,89 @@ export async function verifyFacultyMfaController(req, res, next) {
       success: true,
       message: 'Faculty login successful.',
       user: result.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function refreshSessionController(req, res, next) {
+  try {
+    const refreshToken =
+      req.cookies?.[env.refreshCookieName] ||
+      req.body?.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'No refresh token provided.',
+      });
+    }
+
+    const result = await refreshAuthSession(refreshToken);
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Session refreshed successfully.',
+      data: {
+        user: result.user,
+      },
+      user: result.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function logoutController(req, res) {
+  const refreshToken = req.cookies?.[env.refreshCookieName];
+  if (refreshToken) {
+    try {
+      await revokeRefreshSession(refreshToken);
+    } catch (_e) {
+      // ignore
+    }
+  }
+  clearAuthCookies(res);
+  return res.status(200).json({
+    success: true,
+    message: 'Logged out successfully.',
+  });
+}
+
+export async function getMeController(req, res, next) {
+  try {
+    if (req.user?.userId) {
+      const user = await findUserById(req.user.userId);
+      if (user && user.status === 'ACTIVE') {
+        const userObj = {
+          userId: String(user.user_id),
+          email: user.email,
+          role: user.role,
+        };
+        return res.status(200).json({
+          success: true,
+          user: userObj,
+          data: userObj,
+        });
+      }
+    }
+
+    const refreshToken = req.cookies?.[env.refreshCookieName];
+    if (refreshToken) {
+      const result = await refreshAuthSession(refreshToken);
+      setAuthCookies(res, result.accessToken, result.refreshToken);
+      return res.status(200).json({
+        success: true,
+        user: result.user,
+        data: result.user,
+      });
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'No active session found.',
     });
   } catch (error) {
     next(error);

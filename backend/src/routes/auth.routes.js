@@ -1,3 +1,4 @@
+import { extractUser } from '../middleware/auth.middleware.js';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
@@ -14,6 +15,9 @@ import {
 import {
   adminLoginController,
   verifyAdminMfaController,
+  refreshSessionController,
+  logoutController,
+  getMeController,
 } from '../controllers/auth.controller.js';
 
 import {
@@ -164,5 +168,9 @@ router.post(
   studentFaceUpload.single('faceImage'),
   studentFaceLoginController
 );
+
+router.get('/me', extractUser, getMeController);
+router.post('/refresh', refreshSessionController);
+router.post('/logout', logoutController);
 
 export default router;

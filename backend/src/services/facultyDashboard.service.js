@@ -9,7 +9,10 @@ export const getFacultyDashboard = async (userId) => {
     throw error;
   }
 
-  const subjects = await facultyDashboardRepository.getTeachingSubjects(profile.facultyId);
+  const [subjects, pendingRequests] = await Promise.all([
+    facultyDashboardRepository.getTeachingSubjects(profile.facultyId),
+    facultyDashboardRepository.getFacultyPendingRequestsCount(profile.facultyId),
+  ]);
 
   const totalStudents = subjects.reduce(
     (sum, subject) => sum + (subject.studentCount || 0),
@@ -19,8 +22,10 @@ export const getFacultyDashboard = async (userId) => {
   return {
     faculty: profile,
     summary: {
+      totalSubjects: subjects.length,
       subjectsTeaching: subjects.length,
       totalStudents,
+      pendingRequests,
     },
     subjects,
   };

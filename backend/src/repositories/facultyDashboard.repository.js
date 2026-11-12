@@ -36,6 +36,7 @@ export const getTeachingSubjects = async (facultyId) => {
        s.subject_code AS subjectCode,
        s.name,
        s.description,
+       s.credits,
        fs.assigned_at AS assignedAt,
        COUNT(DISTINCT ss.student_id) AS studentCount
      FROM faculty_subjects fs
@@ -44,7 +45,7 @@ export const getTeachingSubjects = async (facultyId) => {
      LEFT JOIN subject_students ss
        ON ss.subject_id = s.id
      WHERE fs.faculty_id = ?
-     GROUP BY s.id, s.subject_code, s.name, s.description, fs.assigned_at
+     GROUP BY s.id, s.subject_code, s.name, s.description, s.credits, fs.assigned_at
      ORDER BY s.name ASC`,
     [facultyId]
   );
@@ -52,6 +53,17 @@ export const getTeachingSubjects = async (facultyId) => {
   return rows.map((row) => ({
     ...row,
     studentCount: Number(row.studentCount),
+    credits: Number(row.credits ?? 3),
   }));
 };
 
+export const getFacultyPendingRequestsCount = async (facultyId) => {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS count
+     FROM subject_requests
+     WHERE faculty_id = ? AND status = 'PENDING'`,
+    [facultyId]
+  );
+
+  return Number(rows[0]?.count ?? 0);
+};

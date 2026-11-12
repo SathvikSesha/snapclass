@@ -7,13 +7,16 @@ export const getAllSubjectsForFaculty = async (userId, connection = pool) => {
        s.subject_code AS subjectCode,
        s.name,
        s.description,
+       s.credits,
 
        CASE
          WHEN fs.faculty_id IS NOT NULL THEN TRUE
          ELSE FALSE
        END AS isTeaching,
 
-       sr.status AS requestStatus
+       sr.id AS requestId,
+       sr.status AS requestStatus,
+       sr.requested_at AS requestedAt
 
      FROM subjects s
 
@@ -39,8 +42,9 @@ export const getAllSubjectsForFaculty = async (userId, connection = pool) => {
 
     return {
       ...subject,
+      credits: Number(subject.credits ?? 3),
       isTeaching,
-      canRequest: !isTeaching && (subject.requestStatus === null || subject.requestStatus === undefined),
+      canRequest: !isTeaching && (subject.requestStatus === null || subject.requestStatus === undefined || subject.requestStatus === 'REJECTED'),
     };
   });
 };
@@ -73,7 +77,7 @@ export const getFacultyByUserId = async (userId, connection = pool) => {
 
 export const getSubjectById = async (subjectId, connection = pool) => {
   const [rows] = await connection.execute(
-    'SELECT id, subject_code AS subjectCode, name FROM subjects WHERE id = ? LIMIT 1',
+    'SELECT id, subject_code AS subjectCode, name, credits FROM subjects WHERE id = ? LIMIT 1',
     [subjectId]
   );
 
@@ -109,4 +113,17 @@ export const createSubjectRequest = async ({ subjectId, facultyId }, connection 
   );
 
   return result.insertId;
+};
+
+export const reopenSubjectRequest = async (requestId, connection = pool) => {
+  await connection.execute(
+    `UPDATE subject_requests
+     SET status = 'PENDING',
+         requested_at = CURRENT_TIMESTAMP,
+         reviewed_by_admin_user_id = NULL,
+         reviewed_at = NULL,
+         review_note = NULL
+     WHERE id = ?`,
+    [requestId]
+  );
 };

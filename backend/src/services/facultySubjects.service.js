@@ -67,6 +67,8 @@ export const requestSubjectAccess = async ({ userId, subjectId }) => {
       connection
     );
 
+    let requestId;
+
     if (existingRequest) {
       if (existingRequest.status === 'PENDING') {
         const error = new Error('A request for this subject is already pending admin review');
@@ -79,16 +81,16 @@ export const requestSubjectAccess = async ({ userId, subjectId }) => {
         throw error;
       }
       if (existingRequest.status === 'REJECTED') {
-        const error = new Error('Your previous request for this subject was rejected. Please contact an administrator.');
-        error.statusCode = 409;
-        throw error;
+        // Reopen the rejected request back to PENDING
+        requestId = existingRequest.id;
+        await facultySubjectsRepository.reopenSubjectRequest(requestId, connection);
       }
+    } else {
+      requestId = await facultySubjectsRepository.createSubjectRequest(
+        { subjectId: parsedSubjectId, facultyId: faculty.faculty_id },
+        connection
+      );
     }
-
-    const requestId = await facultySubjectsRepository.createSubjectRequest(
-      { subjectId: parsedSubjectId, facultyId: faculty.faculty_id },
-      connection
-    );
 
     await createLog({
       actorUserId: userId,

@@ -1,5 +1,5 @@
 import { pool } from '../config/db.js';
-import { findUserByEmail, markEmailVerified } from '../repositories/user.repository.js';
+import { findUserByEmail, markEmailVerified, findUserById } from '../repositories/user.repository.js';
 import { generateAndSendOtp, verifyOtp } from './otp.service.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import {
@@ -7,7 +7,7 @@ import {
   generateRefreshToken,
 } from '../utils/token.js';
 import { setAuthCookies } from '../utils/cookies.js';
-import { createRefreshSession } from './session.service.js';
+import { createRefreshSession, rotateRefreshSession } from './session.service.js';
 import { findUserForAuthentication } from '../repositories/user.repository.js';
 
 
@@ -353,6 +353,48 @@ export async function completeFacultyMfa({ email, otp }) {
   return {
     accessToken,
     refreshToken,
+    user: {
+      userId: String(user.user_id),
+      email: user.email,
+      role: user.role,
+    },
+  };
+}
+
+
+export async function refreshAuthSession(oldRefreshToken) {
+  if (!oldRefreshToken) {
+    const error = new Error('Refresh token is required.');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const newRefreshToken = generateRefreshToken();
+  const session = await rotateRefreshSession({
+    oldRefreshToken,
+    newRefreshToken,
+  });
+
+  if (!session) {
+    const error = new Error('Session expired. Please log in again.');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const userId = Number(session.userId);
+  const user = await findUserById(userId);
+
+  if (!user || user.status !== 'ACTIVE') {
+    const error = new Error('User not found or inactive.');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const accessToken = generateAccessToken(user);
+
+  return {
+    accessToken,
+    refreshToken: newRefreshToken,
     user: {
       userId: String(user.user_id),
       email: user.email,

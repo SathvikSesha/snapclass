@@ -24,6 +24,14 @@ export const getSubjectCount = async () => {
     return Number(rows[0].total);
 };
 
+export const getPendingRequestsCount = async () => {
+    const [rows] = await pool.execute(
+        "SELECT COUNT(*) AS total FROM subject_requests WHERE status = 'PENDING'"
+    );
+
+    return Number(rows[0]?.total ?? 0);
+};
+
 export const getRecentLogs = async () => {
     const [rows] = await pool.execute(`
         SELECT

@@ -12,6 +12,20 @@ import {
 import { recognizeAttendanceFacesController } from '../controllers/facultyAttendanceRecognition.controller.js';
 import { attendanceImagesUpload } from '../middleware/upload.js';
 import { saveFacultyAttendanceController } from '../controllers/facultyAttendance.controller.js';
+import {
+  createMaterialUpload,
+  completeMaterialUploadController,
+} from '../controllers/facultyMaterials.controller.js';
+
+import {
+    generateQuizController,
+    saveQuizDraftController,
+    listFacultyQuizzesController,
+    getFacultyQuizController,
+    editFacultyQuizDraftController,
+    publishFacultyQuizController,
+    closeFacultyQuizController,
+} from '../controllers/facultyQuiz.controller.js';
 
 const router = Router();
 
@@ -41,6 +55,61 @@ router.post(
   '/subjects/:subjectId/attendance/save',
   requireFaculty,
   saveFacultyAttendanceController
+);
+
+router.post(
+  '/subjects/:subjectId/materials',
+  requireFaculty,
+  createMaterialUpload
+);
+
+router.post(
+  '/materials/:materialId/complete',
+  requireFaculty,
+  completeMaterialUploadController
+);
+
+router.post(
+  '/subjects/:subjectId/quizzes/generate',
+  requireFaculty,
+  generateQuizController
+);
+
+
+router.post(
+    '/subjects/:subjectId/quizzes',
+    requireFaculty,
+    saveQuizDraftController
+);
+
+router.get(
+    '/quizzes',
+    requireFaculty,
+    listFacultyQuizzesController
+);
+
+router.get(
+    '/quizzes/:quizId',
+    requireFaculty,
+    getFacultyQuizController
+);
+
+router.patch(
+    '/quizzes/:quizId',
+    requireFaculty,
+    editFacultyQuizDraftController
+);
+
+router.post(
+    '/quizzes/:quizId/publish',
+    requireFaculty,
+    publishFacultyQuizController
+);
+
+router.post(
+    '/quizzes/:quizId/close',
+    requireFaculty,
+    closeFacultyQuizController
 );
 
 export default router;

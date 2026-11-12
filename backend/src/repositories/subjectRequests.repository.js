@@ -1,9 +1,11 @@
-
 import { pool } from '../config/db.js';
 
 export const getSubjectRequests = async (status = 'PENDING') => {
-  const [rows] = await pool.execute(
-    `SELECT
+  const normalized = status ? String(status).trim().toUpperCase() : 'PENDING';
+  const hasFilter = normalized && normalized !== 'ALL';
+
+  const query = `
+    SELECT
        r.id,
        r.status,
        r.requested_at AS requestedAt,
@@ -12,6 +14,7 @@ export const getSubjectRequests = async (status = 'PENDING') => {
        s.id AS subjectId,
        s.subject_code AS subjectCode,
        s.name AS subjectName,
+       s.credits,
        f.faculty_id AS facultyId,
        u.user_id AS facultyUserId,
        f.full_name AS facultyName,
@@ -20,10 +23,13 @@ export const getSubjectRequests = async (status = 'PENDING') => {
      JOIN subjects s ON s.id = r.subject_id
      JOIN faculty f ON f.faculty_id = r.faculty_id
      JOIN users u ON u.user_id = f.user_id
-     WHERE r.status = ?
-     ORDER BY r.requested_at DESC, r.id DESC`,
-    [status]
-  );
+     ${hasFilter ? 'WHERE r.status = ?' : ''}
+     ORDER BY r.requested_at DESC, r.id DESC
+  `;
+
+  const [rows] = hasFilter
+    ? await pool.execute(query, [normalized])
+    : await pool.execute(query);
 
   return rows;
 };
@@ -53,6 +59,18 @@ export const approveFacultyAssignment = async (
   );
 };
 
+export const revokeFacultyAssignment = async (
+  subjectId,
+  facultyId,
+  connection
+) => {
+  await connection.execute(
+    `DELETE FROM faculty_subjects
+     WHERE subject_id = ? AND faculty_id = ?`,
+    [subjectId, facultyId]
+  );
+};
+
 export const reviewRequest = async (
   { requestId, status, adminUserId, reviewNote },
   connection
@@ -63,7 +81,7 @@ export const reviewRequest = async (
          reviewed_by_admin_user_id = ?,
          reviewed_at = CURRENT_TIMESTAMP,
          review_note = ?
-     WHERE id = ? AND status = 'PENDING'`,
+     WHERE id = ?`,
     [status, adminUserId, reviewNote ?? null, requestId]
   );
 

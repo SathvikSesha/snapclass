@@ -22,11 +22,19 @@ export const createSubject = async (req, res, next) => {
     const subjectCode = req.body.subjectCode?.trim();
     const name = req.body.name?.trim();
     const description = req.body.description?.trim() || null;
+    const rawCredits = req.body.credits !== undefined ? Number(req.body.credits) : 3;
 
     if (!subjectCode || !name) {
       return res.status(400).json({
         success: false,
         message: 'subjectCode and name are required',
+      });
+    }
+
+    if (!Number.isInteger(rawCredits) || rawCredits < 1 || rawCredits > 30) {
+      return res.status(400).json({
+        success: false,
+        message: 'Credits must be an integer between 1 and 30',
       });
     }
 
@@ -50,6 +58,7 @@ export const createSubject = async (req, res, next) => {
       subjectCode,
       name,
       description,
+      credits: rawCredits,
       ...identity,
     });
 
@@ -87,7 +96,7 @@ export const getSubjectRequests = async (req, res, next) => {
   try {
     const rawStatus = req.query.status
       ? String(req.query.status).trim().toUpperCase()
-      : 'PENDING';
+      : 'ALL';
     const requests = await adminSubjectsService.getRequests(rawStatus);
 
     return res.status(200).json({
@@ -110,7 +119,7 @@ export const reviewSubjectRequest = async (req, res, next) => {
       });
     }
 
-    const rawDecision = req.body.decision;
+    const rawDecision = req.body.decision || req.body.status;
     const decision = typeof rawDecision === 'string'
       ? rawDecision.trim().toUpperCase()
       : null;

@@ -2,6 +2,17 @@ import { getRegistrationWindow } from '../repositories/admin.repository.js';
 import { createRegistrationWindow } from '../repositories/admin.repository.js';
 import { updateRegistrationWindow } from '../repositories/admin.repository.js';
 
+import { disablePortalUser } from '../repositories/admin.repository.js';
+import { revokeAllUserSessions } from './session.service.js';
+import { queueAccountRemovalEmail } from './email-queue.service.js';
+
+import {
+  getAllStudents,
+  getStudentRegisteredSubjects,
+  getAllFaculty,
+  getFacultyAssignedSubjects,
+} from '../repositories/admin.repository.js';
+
 export const getRegistrationWindowDetails = async () => {
   const window = await getRegistrationWindow();
 
@@ -134,3 +145,96 @@ export const rescheduleRegistrationWindow = async ({
     endsAt,
   });
 };
+
+export const fetchAllStudents = async () => {
+  return await getAllStudents();
+};
+
+export const fetchStudentSubjects = async (studentId) => {
+  const student = await getStudentRegisteredSubjects(studentId);
+
+  if (!student) {
+    const error = new Error('Student not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return student;
+};
+
+export const fetchAllFaculty = async () => {
+  return await getAllFaculty();
+};
+
+export const fetchFacultySubjects = async (facultyId) => {
+  const faculty = await getFacultyAssignedSubjects(facultyId);
+
+  if (!faculty) {
+    const error = new Error('Faculty member not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return faculty;
+};
+
+
+
+export const removePortalUser = async ({ accountId, role }) => {
+  if (!['STUDENT', 'FACULTY'].includes(role)) {
+    const error = new Error('Invalid account role.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const account = await disablePortalUser({ accountId, role });
+
+  if (!account) {
+    const error = new Error(`${role.toLowerCase()} account not found.`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (account.alreadyDisabled) {
+    const error = new Error('This account is already disabled.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // The database status is now DISABLED.
+  // Attempt session revocation and email delivery independently.
+  let sessionsRevoked = false;
+  let emailQueued = false;
+
+  try {
+    await revokeAllUserSessions(account.userId);
+    sessionsRevoked = true;
+  } catch (error) {
+    console.error('Session revocation failed:', error);
+  }
+
+  try {
+    await queueAccountRemovalEmail({
+      email: account.email,
+      fullName: account.fullName,
+      role: account.role,
+    });
+
+    emailQueued = true;
+  } catch (error) {
+    console.error('Account removal email queue failed:', error);
+  }
+
+  return {
+    account: {
+      accountId: account.accountId,
+      fullName: account.fullName,
+      email: account.email,
+      role: account.role,
+      status: 'DISABLED',
+    },
+    sessionsRevoked,
+    emailQueued,
+  };
+};
+
