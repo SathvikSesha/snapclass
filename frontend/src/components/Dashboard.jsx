@@ -1,19 +1,30 @@
 import { useAuth } from "../context/AuthContext";
+import StudentDashboard from "./StudentDashboard";
+import AdminDashboard from "./AdminDashboard";
+import FacultyDashboard from "./FacultyDashboard";
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const role = user?.role?.toUpperCase();
 
-  return (
-    <section className="mx-auto flex min-h-[65vh] max-w-5xl flex-col items-center justify-center px-6 text-center">
-      <p className="mb-3 rounded-full bg-indigo-100 px-4 py-1 text-sm font-medium text-indigo-700">
-        {user?.role || "Authenticated user"}
-      </p>
+  switch (role) {
+    case "STUDENT":
+      return <StudentDashboard />;
 
-      <h1 className="text-4xl font-bold">DASHBOARD</h1>
+    case "ADMIN":
+      return <AdminDashboard />;
 
-      <p className="mt-3 text-slate-600">
-        Welcome{user?.email ? `, ${user.email}` : ""}! Authentication was successful.
-      </p>
-    </section>
-  );
+    case "FACULTY":
+      return <FacultyDashboard />;
+
+    default:
+      return (
+        <section className="mx-auto max-w-5xl px-6 py-12 text-center">
+          <h1 className="text-2xl font-bold">Unknown role</h1>
+          <p className="mt-2 text-slate-600">
+            Your account role could not be identified.
+          </p>
+        </section>
+      );
+  }
 }

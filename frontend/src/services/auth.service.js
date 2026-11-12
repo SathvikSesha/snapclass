@@ -39,3 +39,49 @@ export async function verifyEmail({ email, otp }) {
   });
   return response.data;
 }
+
+export async function restoreSession() {
+  try {
+    const response = await api.get("/auth/me");
+    const user = response.data?.user ?? response.data?.data?.user;
+    if (user) {
+      localStorage.setItem("snapclass_user", JSON.stringify(user));
+      return user;
+    }
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem("snapclass_user");
+      throw error;
+    }
+
+    try {
+      const refreshRes = await api.post("/auth/refresh");
+      const user = refreshRes.data?.user ?? refreshRes.data?.data?.user;
+      if (user) {
+        localStorage.setItem("snapclass_user", JSON.stringify(user));
+        return user;
+      }
+    } catch (refreshErr) {
+      if (refreshErr?.response?.status === 401) {
+        localStorage.removeItem("snapclass_user");
+        throw refreshErr;
+      }
+    }
+  }
+
+  // Fallback to locally cached user if offline
+  try {
+    const saved = localStorage.getItem("snapclass_user");
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function logoutUser() {
+  try {
+    await api.post("/auth/logout");
+  } catch (_e) {
+    // Ignore network failure on logout
+  }
+}

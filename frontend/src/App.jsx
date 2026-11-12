@@ -8,7 +8,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 
 export default function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isInitializing } = useAuth();
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
@@ -17,17 +17,30 @@ export default function App() {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/auth" element={<AuthPage />} />
-
+          <Route
+            path="/auth"
+            element={
+              isAuthenticated ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <AuthPage />
+              )
+            }
+          />
           <Route
             path="/dashboard"
             element={
-              isAuthenticated
-                ? <Dashboard />
-                : <Navigate to="/auth" replace />
+              isInitializing && !isAuthenticated ? (
+                <div className="flex min-h-[60vh] items-center justify-center p-8 text-center text-slate-500">
+                  Restoring session...
+                </div>
+              ) : isAuthenticated ? (
+                <Dashboard />
+              ) : (
+                <Navigate to="/auth" replace />
+              )
             }
           />
-
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
