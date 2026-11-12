@@ -16,6 +16,9 @@ import {
   createMaterialUpload,
   completeMaterialUploadController,
 } from '../controllers/facultyMaterials.controller.js';
+import {
+  getFacultyQuizResultsController,
+} from '../controllers/facultyQuizResults.controller.js';
 
 import {
     generateQuizController,
@@ -110,6 +113,12 @@ router.post(
     '/quizzes/:quizId/close',
     requireFaculty,
     closeFacultyQuizController
+);
+
+router.get(
+  '/quizzes/:quizId/results',
+  requireFaculty,
+  getFacultyQuizResultsController
 );
 
 export default router;
