@@ -39,12 +39,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const isAuthEndpoint =
-      originalRequest.url?.includes("/auth/refresh") ||
-      originalRequest.url?.includes("/auth/login") ||
-      originalRequest.url?.includes("/auth/verify-mfa") ||
-      originalRequest.url?.includes("/auth/logout") ||
-      originalRequest.url?.includes("/auth/me");
+    const isAuthEndpoint = originalRequest.url?.includes("/auth/");
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
@@ -66,7 +61,9 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         try {
           localStorage.removeItem("snapclass_user");
-        } catch (_e) {}
+        } catch {
+          // ignore storage access errors
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

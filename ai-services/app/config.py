@@ -60,7 +60,7 @@ class Settings:
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
     OLLAMA_TIMEOUT: int = get_int("OLLAMA_TIMEOUT", 300)
     OLLAMA_NUM_CTX: int = get_int("OLLAMA_NUM_CTX", 4096)
-    OLLAMA_NUM_PREDICT: int = get_int("OLLAMA_NUM_PREDICT", 1024)
+    OLLAMA_NUM_PREDICT: int = get_int("OLLAMA_NUM_PREDICT", 2048)
     OLLAMA_NUM_THREAD: int = get_int("OLLAMA_NUM_THREAD", 4)
     OLLAMA_TEMPERATURE: float = get_float("OLLAMA_TEMPERATURE", 0.2)
 

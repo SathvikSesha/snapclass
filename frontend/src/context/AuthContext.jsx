@@ -24,14 +24,18 @@ export function AuthProvider({ children }) {
   const login = useCallback((userData) => {
     try {
       localStorage.setItem("snapclass_user", JSON.stringify(userData));
-    } catch (_e) {}
+    } catch {
+      // ignore storage access errors
+    }
     setUser(userData);
   }, []);
 
   const logout = useCallback(async () => {
     try {
       localStorage.removeItem("snapclass_user");
-    } catch (_e) {}
+    } catch {
+      // ignore storage access errors
+    }
     setUser(null);
     await logoutUser();
   }, []);

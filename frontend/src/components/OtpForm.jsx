@@ -1,103 +1,216 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// Pick literal Tailwind classes from the accent gradient passed by AuthPage
+function getTone(accentClass = "") {
+  if (accentClass.includes("emerald")) {
+    return {
+      focus: "focus:border-emerald-400 focus:ring-emerald-100",
+      filled: "border-emerald-300 bg-emerald-50 text-emerald-700",
+      link: "text-emerald-600 hover:text-emerald-700",
+      bar: "from-emerald-400 to-teal-400",
+      shadow: "shadow-emerald-200/70",
+    };
+  }
+  if (
+    accentClass.includes("rose") ||
+    accentClass.includes("purple") ||
+    accentClass.includes("fuchsia")
+  ) {
+    return {
+      focus: "focus:border-rose-400 focus:ring-rose-100",
+      filled: "border-rose-300 bg-rose-50 text-rose-700",
+      link: "text-rose-600 hover:text-rose-700",
+      bar: "from-fuchsia-400 to-rose-400",
+      shadow: "shadow-rose-200/70",
+    };
+  }
+  return {
+    focus: "focus:border-indigo-400 focus:ring-indigo-100",
+    filled: "border-indigo-300 bg-indigo-50 text-indigo-700",
+    link: "text-indigo-600 hover:text-indigo-700",
+    bar: "from-indigo-400 to-sky-400",
+    shadow: "shadow-indigo-200/70",
+  };
+}
 
 export default function OtpForm({
+  badge = "SECURITY VERIFICATION",
   title,
   description,
-  value,
-  onChange,
-  onSubmit,
+  email,
+  accentClass = "from-indigo-500 to-cyan-500",
   loading = false,
-  onBack,
+  onSubmit,
   onResend,
+  onBack,
 }) {
-  const [internalOtp, setInternalOtp] = useState("");
+  const [digits, setDigits] = useState(["", "", "", "", "", ""]);
+  const [resendCooldown, setResendCooldown] = useState(30);
+  const [expirySeconds, setExpirySeconds] = useState(600);
+  const inputsRef = useRef([]);
+  const tone = getTone(accentClass);
 
-  const currentOtp = value !== undefined ? value : internalOtp;
+  useEffect(() => {
+    inputsRef.current[0]?.focus();
+  }, []);
 
-  function handleInputChange(event) {
-    const nextVal = event.target.value.replace(/\D/g, "").slice(0, 6);
-    if (onChange) {
-      onChange(nextVal);
-    } else {
-      setInternalOtp(nextVal);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      setExpirySeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const otpCode = digits.join("");
+
+  function handleDigitChange(index, val) {
+    const clean = val.replace(/\D/g, "");
+    if (!clean) {
+      const next = [...digits];
+      next[index] = "";
+      setDigits(next);
+      return;
+    }
+
+    const char = clean.slice(-1);
+    const next = [...digits];
+    next[index] = char;
+    setDigits(next);
+
+    if (index < 5) {
+      inputsRef.current[index + 1]?.focus();
     }
   }
 
-  async function handleSubmit(event) {
-    if (event?.preventDefault) {
-      event.preventDefault();
-    }
-    if (currentOtp.trim().length === 6 && onSubmit) {
-      await onSubmit(currentOtp.trim());
+  function handleKeyDown(index, e) {
+    if (e.key === "Backspace" && !digits[index] && index > 0) {
+      inputsRef.current[index - 1]?.focus();
     }
   }
+
+  function handlePaste(e) {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+
+    const next = ["", "", "", "", "", ""];
+    for (let i = 0; i < pasted.length; i += 1) {
+      next[i] = pasted[i];
+    }
+    setDigits(next);
+    const focusIdx = Math.min(pasted.length, 5);
+    inputsRef.current[focusIdx]?.focus();
+  }
+
+  async function handleFormSubmit(e) {
+    e.preventDefault();
+    if (otpCode.length === 6 && !loading) {
+      await onSubmit(otpCode);
+    }
+  }
+
+  async function triggerResend() {
+    if (resendCooldown > 0 || loading || !onResend) return;
+    await onResend();
+    setResendCooldown(30);
+    setExpirySeconds(600);
+    setDigits(["", "", "", "", "", ""]);
+    inputsRef.current[0]?.focus();
+  }
+
+  const minutes = String(Math.floor(expirySeconds / 60)).padStart(2, "0");
+  const seconds = String(expirySeconds % 60).padStart(2, "0");
+  const expiryPct = Math.round((expirySeconds / 600) * 100);
+  const expiring = expirySeconds > 0 && expirySeconds <= 60;
 
   return (
-    <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+    <form onSubmit={handleFormSubmit} className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900">{title}</h3>
-        <p className="mt-2 text-sm text-slate-600">{description}</p>
+        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3l8 3v6c0 4.5-3.2 8.3-8 9-4.8-.7-8-4.5-8-9V6l8-3z" />
+          </svg>
+          {badge}
+        </span>
+        <h3 className="sc-display mt-3 text-2xl font-bold text-slate-800 sm:text-3xl">{title}</h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{description}</p>
+        {email && (
+          <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+            <span className="truncate">
+              Code sent to <strong className="font-semibold">{email}</strong>
+            </span>
+          </div>
+        )}
       </div>
 
+      {/* 6 OTP boxes */}
       <div>
-        <label htmlFor="otp" className="mb-2 block text-sm font-medium text-slate-700">
-          Six-digit verification code
-        </label>
+        <div className="mb-2 flex items-center justify-between text-xs">
+          <span className="font-semibold text-slate-600">Enter the 6-digit code</span>
+          <span className={`font-medium tabular-nums ${expiring ? "text-rose-500" : "text-slate-400"}`}>
+            {expirySeconds > 0 ? `Expires in ${minutes}:${seconds}` : "Code expired. Request a new one."}
+          </span>
+        </div>
 
-        <input
-          id="otp"
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]{6}"
-          maxLength={6}
-          value={currentOtp}
-          onChange={handleInputChange}
-          placeholder="e.g. 123456"
-          required
-          autoFocus
-          className="w-full text-center text-2xl font-mono tracking-widest rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
-        />
+        <div className="grid grid-cols-6 gap-2 sm:gap-3" onPaste={handlePaste}>
+          {digits.map((digit, idx) => (
+            <input
+              key={idx}
+              ref={(el) => {
+                inputsRef.current[idx] = el;
+              }}
+              type="text"
+              inputMode="numeric"
+              autoComplete={idx === 0 ? "one-time-code" : "off"}
+              maxLength={1}
+              value={digit}
+              aria-label={`Digit ${idx + 1}`}
+              onChange={(e) => handleDigitChange(idx, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(idx, e)}
+              className={`aspect-square w-full rounded-2xl border text-center text-2xl font-bold outline-none transition-all duration-200 focus:ring-4 ${
+                digit ? `${tone.filled} scale-[1.04]` : "border-slate-200 bg-white text-slate-800"
+              } ${tone.focus}`}
+            />
+          ))}
+        </div>
+
+        {/* Expiry bar */}
+        <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+          <div
+            className={`h-full rounded-full bg-gradient-to-r ${expiring ? "from-rose-400 to-rose-500" : tone.bar} transition-all duration-1000 ease-linear`}
+            style={{ width: `${expiryPct}%` }}
+          />
+        </div>
       </div>
 
       <button
         type="submit"
-        disabled={loading || currentOtp.trim().length !== 6}
-        className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 transition"
+        disabled={loading || otpCode.length !== 6}
+        className={`w-full cursor-pointer rounded-xl bg-gradient-to-r ${accentClass} px-5 py-3.5 text-sm font-semibold text-white shadow-lg ${tone.shadow} transition duration-200 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:hover:translate-y-0`}
       >
-        {loading ? (
-          <span className="inline-flex items-center gap-2 justify-center">
-            <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Verifying code...
-          </span>
-        ) : (
-          "Verify OTP"
-        )}
+        {loading ? "Verifying..." : "Verify and continue"}
       </button>
 
-      <div className="flex flex-col gap-2 pt-2 text-center">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={loading}
+          className="cursor-pointer font-medium text-slate-500 transition hover:text-slate-800 disabled:opacity-50"
+        >
+          ← Change details
+        </button>
+
         {onResend && (
           <button
             type="button"
-            disabled={loading}
-            onClick={onResend}
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50 transition"
+            onClick={triggerResend}
+            disabled={loading || resendCooldown > 0}
+            className={`cursor-pointer font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${tone.link}`}
           >
-            Didn't receive the code? Resend OTP
-          </button>
-        )}
-
-        {onBack && (
-          <button
-            type="button"
-            disabled={loading}
-            onClick={onBack}
-            className="text-sm text-slate-500 hover:text-slate-800 transition"
-          >
-            ← Back to sign in
+            {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend code"}
           </button>
         )}
       </div>

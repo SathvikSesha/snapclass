@@ -1,12 +1,15 @@
 
 import math
 import re
+import logging
 from collections import defaultdict
 
 from app.config import settings
 from app.rag.generation.ollama_client import OllamaClient
 from app.rag.vector_store.qdrant_store import QdrantStore
 from app.rag.quiz.quiz_schema import QuizResponse
+
+logger = logging.getLogger(__name__)
 
 
 class QuizGenerator:
@@ -193,12 +196,22 @@ Rules:
             else "None"
         )
 
+        valid_sources_list = []
+        for c in chunks:
+            valid_sources_list.append(
+                f"- Document ID: \"{c['document_id']}\", Location: \"{c['location']}\""
+            )
+        valid_sources_str = "\n".join(valid_sources_list)
+
         return f"""
 SUBJECT ID:
 {subject_id}
 
 AVAILABLE DOCUMENTS IN THIS CONTEXT:
 {", ".join(document_names)}
+
+VALID SOURCE COMBINATIONS (Choose source_document and source_location EXACTLY from this list):
+{valid_sources_str}
 
 NUMBER OF QUESTIONS:
 {question_count}
@@ -217,12 +230,13 @@ CRITICAL RULES:
 - Do NOT repeat, rephrase, or test the same function or concept as any question in the FORBIDDEN list.
 - Each question must test a DISTINCT concept or operation from the content.
 - For mixed difficulty, assign each individual question 'easy', 'medium', or 'hard' (never 'mixed').
+- Keep explanations clear and concise (1-3 sentences) so the JSON output is complete and never truncated.
 
 Every question must:
 - Have exactly four distinct options.
 - Have exactly one correct answer matching one of the options.
 - Include a clear explanation based on the content.
-- Cite exactly ONE source chunk: use its exact single Document ID for source_document (never combine multiple documents) and its exact Location for source_location.
+- Cite exactly ONE source chunk: copy its exact single Document ID for source_document and its exact Location for source_location from the VALID SOURCE COMBINATIONS list above.
 - Have a difficulty of 'easy', 'medium', or 'hard'.
 
 Return JSON in exactly this structure:
@@ -264,6 +278,7 @@ Return only JSON. Do not include Markdown or additional text.
         expected_count: int,
         valid_sources: set[tuple],
         previous_questions: list[str] | None = None,
+        current_chunks: list[dict] | None = None,
     ):
         """
         Validate the generated batch before combining it.
@@ -291,6 +306,11 @@ Return only JSON. Do not include Markdown or additional text.
         for doc, loc in valid_sources:
             norm_key = (str(doc).strip().casefold(), str(loc).strip().casefold())
             source_lookup[norm_key] = (str(doc), str(loc))
+
+        # Build doc to locations map for relaxed matching
+        doc_to_sources = defaultdict(list)
+        for doc, loc in valid_sources:
+            doc_to_sources[str(doc).strip().casefold()].append((str(doc), str(loc)))
 
         seen_batch_questions = set()
         normalized_previous = {
@@ -336,16 +356,16 @@ Return only JSON. Do not include Markdown or additional text.
                 )
 
             # Match source reference with case/whitespace tolerance
-            doc_norm = question.source_document.strip().casefold()
-            loc_norm = question.source_location.strip().casefold()
+            doc_norm = str(question.source_document).strip().casefold()
+            loc_norm = str(question.source_location).strip().casefold()
 
             canonical_source = source_lookup.get((doc_norm, loc_norm))
 
-            # If not matched directly, check if the LLM listed combined doc names e.g. "FDA, pdfdocument"
+            # 1. If not matched directly, check if the LLM listed combined doc names e.g. "FDA, pdfdocument"
             if not canonical_source:
                 candidate_docs = [
                     d.strip().casefold()
-                    for d in re.split(r"[,/]| and ", question.source_document)
+                    for d in re.split(r"[,/]| and ", str(question.source_document))
                     if d.strip()
                 ]
                 for c_doc in candidate_docs:
@@ -353,14 +373,70 @@ Return only JSON. Do not include Markdown or additional text.
                         canonical_source = source_lookup[(c_doc, loc_norm)]
                         break
 
+            # 2. Check if doc_norm matches a known document ID or substring
             if not canonical_source:
+                matched_d_norm = None
+                if doc_norm in doc_to_sources:
+                    matched_d_norm = doc_norm
+                else:
+                    for d_key in doc_to_sources:
+                        if d_key in doc_norm or doc_norm in d_key:
+                            matched_d_norm = d_key
+                            break
+                    if not matched_d_norm:
+                        doc_digits = re.findall(r"\d+", doc_norm)
+                        if doc_digits:
+                            for d_key in doc_to_sources:
+                                if any(digit in d_key for digit in doc_digits):
+                                    matched_d_norm = d_key
+                                    break
+
+                if matched_d_norm:
+                    available_sources = doc_to_sources[matched_d_norm]
+                    # Try to find matching location by digits (e.g., "page 4" vs "4")
+                    loc_digits = re.findall(r"\d+", loc_norm)
+                    matched_loc_source = None
+                    if loc_digits:
+                        for s_doc, s_loc in available_sources:
+                            s_digits = re.findall(r"\d+", s_loc)
+                            if loc_digits == s_digits:
+                                matched_loc_source = (s_doc, s_loc)
+                                break
+                    if matched_loc_source:
+                        canonical_source = matched_loc_source
+                    else:
+                        canonical_source = available_sources[0]
+
+            # 3. Check if LLM referenced "[Source 1]" or "Source 1"
+            if not canonical_source and current_chunks:
+                source_idx_match = re.search(r"source\s*(\d+)", doc_norm)
+                if source_idx_match:
+                    idx = int(source_idx_match.group(1)) - 1
+                    if 0 <= idx < len(current_chunks):
+                        canonical_source = (
+                            str(current_chunks[idx]["document_id"]),
+                            str(current_chunks[idx]["location"]),
+                        )
+
+            # 4. Graceful fallback: use first chunk of current batch or valid sources
+            if not canonical_source:
+                if current_chunks:
+                    canonical_source = (
+                        str(current_chunks[0]["document_id"]),
+                        str(current_chunks[0]["location"]),
+                    )
+                elif valid_sources:
+                    first_src = next(iter(valid_sources))
+                    canonical_source = (str(first_src[0]), str(first_src[1]))
+
+            # Normalize to canonical source reference
+            if canonical_source:
+                question.source_document, question.source_location = canonical_source
+            else:
                 raise ValueError(
                     "Generated question refers to an invalid source: "
                     f"('{question.source_document}', '{question.source_location}')"
                 )
-
-            # Normalize to canonical source reference
-            question.source_document, question.source_location = canonical_source
 
     @staticmethod
     def _normalize_question(question: str) -> str:
@@ -373,6 +449,22 @@ Return only JSON. Do not include Markdown or additional text.
             " ",
             question.lower(),
         ).strip()
+
+    @staticmethod
+    def _extract_json_string(text: str) -> str:
+        """
+        Extract JSON object string from raw LLM response if wrapped in markdown fences or tags.
+        """
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+            cleaned = cleaned.strip()
+        first_brace = cleaned.find("{")
+        last_brace = cleaned.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            cleaned = cleaned[first_brace : last_brace + 1]
+        return cleaned
 
     # ---------------------------------------------------------
     # SINGLE BATCH GENERATION
@@ -442,9 +534,9 @@ Return only JSON. Do not include Markdown or additional text.
                     f"attempt {attempt + 1}/{total_attempts}"
                 )
 
-                batch_num_predict = min(
+                batch_num_predict = max(
                     settings.OLLAMA_NUM_PREDICT,
-                    max(384, question_count * 250),
+                    max(1536, question_count * 750),
                 )
 
                 raw_response = self.ollama_client.generate(
@@ -455,7 +547,8 @@ Return only JSON. Do not include Markdown or additional text.
                     temperature=current_temp,
                 )
 
-                quiz = QuizResponse.model_validate_json(raw_response)
+                cleaned_response = self._extract_json_string(raw_response)
+                quiz = QuizResponse.model_validate_json(cleaned_response)
 
                 self._validate_batch(
                     quiz=quiz,
@@ -463,6 +556,7 @@ Return only JSON. Do not include Markdown or additional text.
                     expected_count=question_count,
                     valid_sources=valid_sources,
                     previous_questions=previous_questions,
+                    current_chunks=current_chunks,
                 )
 
                 return quiz

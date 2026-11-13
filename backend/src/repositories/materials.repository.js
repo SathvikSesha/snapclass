@@ -66,6 +66,10 @@ export const getAvailableMaterialsBySubject = async (subjectId) => {
        original_filename AS originalFilename,
        file_type AS fileType,
        file_size AS fileSize,
+       status,
+       ingestion_status AS ingestionStatus,
+       ingestion_error AS ingestionError,
+       ingested_at AS ingestedAt,
        created_at AS createdAt
      FROM subject_materials
      WHERE subject_id = ?
