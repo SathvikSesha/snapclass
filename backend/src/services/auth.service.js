@@ -7,8 +7,11 @@ import {
   generateRefreshToken,
 } from '../utils/token.js';
 import { setAuthCookies } from '../utils/cookies.js';
-import { createRefreshSession, rotateRefreshSession } from './session.service.js';
-import { findUserForAuthentication } from '../repositories/user.repository.js';
+import { createRefreshSession, rotateRefreshSession, revokeAllUserSessions } from './session.service.js';
+import { findUserForAuthentication, updateUserPassword } from '../repositories/user.repository.js';
+import { randomBytes } from 'node:crypto';
+import { redis } from '../config/redis.js';
+import { sendPasswordResetEmail } from '../utils/email.js';
 
 
 export async function registerAdmin({ fullName, email, password }) {
@@ -401,4 +404,71 @@ export async function refreshAuthSession(oldRefreshToken) {
       role: user.role,
     },
   };
+}
+
+export async function requestPasswordReset(email) {
+  const user = await findUserByEmail(email);
+  // Always return success to prevent email enumeration
+  if (!user || user.status !== 'ACTIVE') {
+    return { message: 'If that email is registered, a reset code has been sent.' };
+  }
+  await generateAndSendOtp({
+    userId: String(user.user_id),
+    email: user.email,
+    purpose: 'PASSWORD_RESET',
+  });
+  return { message: 'If that email is registered, a reset code has been sent.' };
+}
+
+export async function verifyPasswordResetOtp({ email, otp }) {
+  const user = await findUserByEmail(email);
+  if (!user || user.status !== 'ACTIVE') {
+    const error = new Error('Invalid or expired reset code.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const isValid = await verifyOtp({
+    userId: String(user.user_id),
+    purpose: 'PASSWORD_RESET',
+    otp,
+  });
+  if (!isValid) {
+    const error = new Error('Invalid or expired reset code.');
+    error.statusCode = 400;
+    throw error;
+  }
+  // Issue a short-lived reset token stored in Redis
+  const resetToken = randomBytes(32).toString('hex');
+  await redis.set(
+    `snapclass:password-reset-token:${user.user_id}`,
+    resetToken,
+    { ex: 900 } // 15 minutes
+  );
+  return { resetToken, email: user.email };
+}
+
+export async function resetPassword({ email, resetToken, newPassword }) {
+  if (!newPassword || newPassword.length < 12 || Buffer.byteLength(newPassword, 'utf8') > 1024) {
+    const error = new Error('Password must be at least 12 characters.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const user = await findUserByEmail(email);
+  if (!user || user.status !== 'ACTIVE') {
+    const error = new Error('Invalid request.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const storedToken = await redis.get(`snapclass:password-reset-token:${user.user_id}`);
+  if (!storedToken || storedToken !== resetToken) {
+    const error = new Error('Reset token is invalid or has expired.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await updateUserPassword(user.user_id, passwordHash);
+  // Invalidate token and all active sessions
+  await redis.del(`snapclass:password-reset-token:${user.user_id}`);
+  await revokeAllUserSessions(String(user.user_id));
+  return { message: 'Password updated successfully. Please sign in with your new password.' };
 }

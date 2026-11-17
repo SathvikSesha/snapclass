@@ -193,6 +193,23 @@ function buildEmail(job) {
     };
   }
 
+  if (job.type === 'PASSWORD_RESET') {
+    if (!job.email || typeof job.otp !== 'string') {
+      throw new Error('Invalid PASSWORD_RESET email job.');
+    }
+    return {
+      to: job.email,
+      subject: 'Reset your SnapClass password',
+      text: [
+        `Your SnapClass password reset code is: ${job.otp}`,
+        '',
+        'This code expires in 10 minutes.',
+        'Do not share this code with anyone.',
+        'If you did not request this, you can ignore this email.',
+      ].join('\n'),
+    };
+  }
+
   
 if (job.type === 'ACCOUNT_REMOVED') {
   if (!job.email || !job.fullName || !job.role) {

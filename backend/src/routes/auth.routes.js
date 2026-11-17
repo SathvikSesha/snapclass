@@ -34,6 +34,8 @@ import {
   verifyStudentMfaController,
 } from '../controllers/student.controller.js';
 
+import { forgotPasswordController, verifyResetOtpController, resetPasswordController } from '../controllers/auth.controller.js';
+
 const router = Router();
 
 const adminRegisterLimiter = rateLimit({
@@ -167,6 +169,22 @@ router.post(
   studentRegisterLimiter,
   studentFaceUpload.single('faceImage'),
   studentFaceLoginController
+);
+
+router.post(
+  '/forgot-password',
+  rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false }),
+  forgotPasswordController
+);
+router.post(
+  '/verify-reset-otp',
+  rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false }),
+  verifyResetOtpController
+);
+router.post(
+  '/reset-password',
+  rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false }),
+  resetPasswordController
 );
 
 router.get('/me', extractUser, getMeController);

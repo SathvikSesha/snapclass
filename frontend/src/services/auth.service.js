@@ -132,3 +132,27 @@ export async function logoutUser() {
     localStorage.removeItem("snapclass_user");
   }
 }
+
+export async function requestPasswordReset(email) {
+  const response = await api.post('/auth/forgot-password', {
+    email: email.trim().toLowerCase(),
+  });
+  return response.data;
+}
+
+export async function verifyPasswordResetOtp({ email, otp }) {
+  const response = await api.post('/auth/verify-reset-otp', {
+    email: email.trim().toLowerCase(),
+    otp: otp.trim(),
+  });
+  return response.data;
+}
+
+export async function resetPassword({ email, resetToken, newPassword }) {
+  const response = await api.post('/auth/reset-password', {
+    email: email.trim().toLowerCase(),
+    resetToken,
+    newPassword,
+  });
+  return response.data;
+}

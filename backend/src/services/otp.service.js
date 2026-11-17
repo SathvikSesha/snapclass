@@ -18,6 +18,7 @@ const PURPOSES = {
     ttlSeconds: 300,
     resendSeconds: 60,
   },
+  PASSWORD_RESET: { ttlSeconds: 600, resendSeconds: 60 },
 };
 
 function digestOtp(userId, purpose, otp) {
