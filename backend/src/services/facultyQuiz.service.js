@@ -734,8 +734,11 @@ export async function publishFacultyQuiz({
     const startDate = new Date(`${start.replace(' ', 'T')}Z`);
     const deadlineDate = new Date(`${deadline.replace(' ', 'T')}Z`);
 
-    if (startDate.getTime() <= Date.now()) {
-        throw createError('Start time must be in the future', 400);
+    // Allow starting immediately at present time or in the future.
+    // 10-minute grace window accommodates form completion time and minor clock skew.
+    const nowWithGrace = Date.now() - 10 * 60 * 1000;
+    if (startDate.getTime() < nowWithGrace) {
+        throw createError('Start time cannot be in the past', 400);
     }
 
     if (deadlineDate.getTime() <= startDate.getTime()) {

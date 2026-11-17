@@ -12,6 +12,11 @@ async function startServer() {
       console.log(`SnapClass API running on port ${env.port}`);
       console.log(`Environment: ${env.nodeEnv}`);
     });
+
+    // Disable or extend server request timeout to allow long-running AI operations (15 minutes)
+    server.requestTimeout = 15 * 60 * 1000;
+    server.timeout = 15 * 60 * 1000;
+    server.headersTimeout = (15 * 60 + 30) * 1000;
   } catch (error) {
     console.error('Failed to start SnapClass API:', error.message);
     process.exitCode = 1;

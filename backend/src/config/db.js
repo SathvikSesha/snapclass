@@ -10,6 +10,17 @@ export const pool = mysql.createPool({
 
   enableKeepAlive: true,
   decimalNumbers: true,
+
+  // Force all MySQL connections to UTC so that UTC_TIMESTAMP() and NOW()
+  // always return UTC regardless of the MySQL server's system timezone.
+  // This ensures start_at/deadline_at comparisons work correctly when the
+  // server OS or MySQL is configured in a local timezone (e.g. IST +5:30).
+  timezone: '+00:00',
+});
+
+// Belt-and-suspenders: also run SET time_zone on every new connection.
+pool.on('connection', (connection) => {
+  connection.query("SET time_zone = '+00:00'");
 });
 
 export async function checkDatabaseConnection() {
@@ -17,7 +28,11 @@ export async function checkDatabaseConnection() {
 
   try {
     await connection.ping();
-    console.log('MySQL connection successful');
+    // Log what time the DB reports to verify timezone alignment
+    const [rows] = await connection.execute(
+      "SELECT UTC_TIMESTAMP() AS utcNow, NOW() AS localNow, @@session.time_zone AS sessionTz"
+    );
+    console.log('MySQL connection successful. DB time check:', rows[0]);
   } finally {
     connection.release();
   }

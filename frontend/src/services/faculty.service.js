@@ -133,6 +133,9 @@ export async function generateAiQuizQuestions(
       documentIds: documentIds.map(Number),
       numberOfQuestions: Number(numberOfQuestions) || 5,
       difficulty: String(difficulty).toLowerCase(),
+    },
+    {
+      timeout: 15 * 60 * 1000, // 15-minute timeout for multi-batch AI question generation
     }
   );
   return response.data?.data ?? response.data;

@@ -133,11 +133,20 @@ export async function generateQuiz({
     numberOfQuestions,
     difficulty,
 }) {
-    const controller = new AbortController();
+    // Timeout extended to 15 minutes (900000ms, or set to 0 to disable timeout completely)
+    // to allow multi-batch LLM quiz generation without premature abortion.
+    const timeoutMs = process.env.AI_QUIZ_TIMEOUT_MS !== undefined
+        ? Number(process.env.AI_QUIZ_TIMEOUT_MS)
+        : 15 * 60 * 1000;
 
-    const timeout = setTimeout(() => {
-        controller.abort();
-    }, 180000);
+    const controller = new AbortController();
+    let timeout = null;
+
+    if (timeoutMs > 0) {
+        timeout = setTimeout(() => {
+            controller.abort();
+        }, timeoutMs);
+    }
 
     try {
         const response = await fetch(
@@ -200,6 +209,8 @@ export async function generateQuiz({
         serviceError.statusCode = 503;
         throw serviceError;
     } finally {
-        clearTimeout(timeout);
+        if (timeout) {
+            clearTimeout(timeout);
+        }
     }
 }

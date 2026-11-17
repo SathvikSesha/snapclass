@@ -1,5 +1,5 @@
 // FacultyQuizzesModule.jsx
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   closeFacultyQuiz,
   generateAiQuizQuestions,
@@ -19,8 +19,10 @@ function unwrap(val, key) {
 }
 
 function createBlankQuestion(type = "MCQ") {
+  const uid = `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   if (type === "TRUE_FALSE") {
     return {
+      uid,
       questionId: null,
       question: "",
       questionType: "TRUE_FALSE",
@@ -35,6 +37,7 @@ function createBlankQuestion(type = "MCQ") {
     };
   }
   return {
+    uid,
     questionId: null,
     question: "",
     questionType: "MCQ",
@@ -51,9 +54,17 @@ function createBlankQuestion(type = "MCQ") {
   };
 }
 
-function normalizeAiQuestion(q) {
-  const rawType = String(q.questionType ?? q.type ?? "MCQ").toUpperCase();
-  const questionType = rawType === "TRUE_FALSE" || rawType === "BOOLEAN" ? "TRUE_FALSE" : "MCQ";
+function normalizeAiQuestion(q, fallbackIdx = 0) {
+  const uid =
+    q.uid ||
+    q.questionId ||
+    `ai-q-${Date.now()}-${fallbackIdx}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const rawType = String(
+    q.questionType ?? q.type ?? q.question_type ?? "MCQ"
+  ).toUpperCase();
+  const questionType =
+    rawType === "TRUE_FALSE" || rawType === "BOOLEAN" ? "TRUE_FALSE" : "MCQ";
 
   let rawOptions = Array.isArray(q.options) ? q.options : [];
   if (rawOptions.length === 0 && questionType === "TRUE_FALSE") {
@@ -69,17 +80,27 @@ function normalizeAiQuestion(q) {
         q.correctAnswer === opt ||
         q.correct_answer === opt ||
         q.answer === opt ||
-        q.correctOptionIndex === idx;
+        q.correctOptionIndex === idx ||
+        (q.correct_answer === "A" && idx === 0) ||
+        (q.correct_answer === "B" && idx === 1) ||
+        (q.correct_answer === "C" && idx === 2) ||
+        (q.correct_answer === "D" && idx === 3) ||
+        Number(q.correct_answer) === idx;
       return { text: opt, isCorrect: Boolean(isCorrect) };
     }
+
+    const optText =
+      opt.text ?? opt.optionText ?? opt.option_text ?? opt.label ?? "";
+    const isCorrect = Boolean(
+      opt.isCorrect ??
+      opt.correct ??
+      opt.is_correct ??
+      (q.correct_answer && (optText === q.correct_answer || (q.correct_answer === "A" && idx === 0) || (q.correct_answer === "B" && idx === 1) || (q.correct_answer === "C" && idx === 2) || (q.correct_answer === "D" && idx === 3))) ??
+      (q.correctAnswer && (optText === q.correctAnswer || (q.correctAnswer === "A" && idx === 0) || (q.correctAnswer === "B" && idx === 1) || (q.correctAnswer === "C" && idx === 2) || (q.correctAnswer === "D" && idx === 3)))
+    );
     return {
-      text: opt.text ?? opt.optionText ?? opt.label ?? "",
-      isCorrect: Boolean(
-        opt.isCorrect ??
-        opt.correct ??
-        (q.correct_answer && opt.text === q.correct_answer) ??
-        (q.correctAnswer && opt.text === q.correctAnswer)
-      ),
+      text: optText,
+      isCorrect,
     };
   });
 
@@ -98,13 +119,21 @@ function normalizeAiQuestion(q) {
   }
 
   return {
-    questionId: q.questionId ?? q.id ?? null,
-    question: q.question ?? q.questionText ?? q.prompt ?? "",
+    uid,
+    questionId: q.questionId ?? q.id ?? q.question_id ?? null,
+    question:
+      q.question ??
+      q.questionText ??
+      q.question_text ??
+      q.prompt ??
+      q.text ??
+      "",
     questionType,
     difficulty: String(q.difficulty ?? "MEDIUM").toUpperCase(),
     marks: Number(q.marks ?? 1) || 1,
-    explanation: q.explanation ?? "",
-    sourceDocumentId: q.sourceDocumentId ?? q.source_document ?? null,
+    explanation: q.explanation ?? q.rationale ?? "",
+    sourceDocumentId:
+      q.sourceDocumentId ?? q.source_document_id ?? q.source_document ?? null,
     sourceLocation: q.sourceLocation ?? q.source_location ?? null,
     options:
       normalizedOptions.length >= 2
@@ -114,6 +143,16 @@ function normalizeAiQuestion(q) {
             { text: "Option B", isCorrect: false },
           ],
   };
+}
+
+function toLocalDatetimeInput(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const y = date.getFullYear();
+  const m = pad(date.getMonth() + 1);
+  const d = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  return `${y}-${m}-${d}T${hh}:${mm}`;
 }
 
 const inputCls =
@@ -211,6 +250,16 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
     data: null,
   });
 
+  // Questions Preview Modal State (for viewing saved questions in list view)
+  const [previewModal, setPreviewModal] = useState({
+    open: false,
+    loading: false,
+    quiz: null,
+    questions: [],
+  });
+
+  const questionsRef = useRef(null);
+
   const loadQuizzes = useCallback(async () => {
     setLoadingList(true);
     try {
@@ -279,12 +328,38 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
       setQuizDifficulty(String(qMeta.difficulty ?? "MEDIUM").toUpperCase());
       setQuestions(
         rawQuestions.length > 0
-          ? rawQuestions.map(normalizeAiQuestion)
+          ? rawQuestions.map((q, idx) => normalizeAiQuestion(q, idx))
           : [createBlankQuestion("MCQ")]
       );
       setSubView("builder");
     } catch (err) {
       onError?.(err?.response?.data?.message || err?.message || "Could not load quiz details.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function openViewQuestionsModal(quiz) {
+    const qId = quiz.quizId ?? quiz.id;
+    setBusyAction(`view-q-${qId}`);
+    setPreviewModal({ open: true, loading: true, quiz, questions: [] });
+    try {
+      const data = await getFacultyQuizDetails(qId);
+      const rawQuestions = unwrap(data, "questions");
+      setPreviewModal({
+        open: true,
+        loading: false,
+        quiz: data?.quiz ?? quiz,
+        questions:
+          rawQuestions.length > 0
+            ? rawQuestions.map((q, idx) => normalizeAiQuestion(q, idx))
+            : [],
+      });
+    } catch (err) {
+      setPreviewModal({ open: false, loading: false, quiz: null, questions: [] });
+      onError?.(
+        err?.response?.data?.message || err?.message || "Could not load quiz questions."
+      );
     } finally {
       setBusyAction("");
     }
@@ -316,7 +391,11 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
       });
 
       const generatedList =
-        aiData?.questions ?? aiData?.quiz?.questions ?? unwrap(aiData, "questions");
+        aiData?.questions ??
+        aiData?.quiz?.questions ??
+        aiData?.data?.questions ??
+        aiData?.data?.quiz?.questions ??
+        (Array.isArray(aiData) ? aiData : unwrap(aiData, "questions"));
 
       if (!Array.isArray(generatedList) || generatedList.length === 0) {
         onError?.(
@@ -325,14 +404,23 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
         return;
       }
 
-      const mapped = generatedList.map(normalizeAiQuestion);
+      const mapped = generatedList.map((q, idx) => normalizeAiQuestion(q, idx));
       setQuestions(mapped);
-      if (!quizTitle.trim() && aiData?.title) {
-        setQuizTitle(aiData.title);
+
+      const suggestedTitle =
+        aiData?.title ?? aiData?.quiz?.title ?? aiData?.data?.title;
+      if (!quizTitle.trim() && suggestedTitle) {
+        setQuizTitle(suggestedTitle);
       }
+
       onNotify?.(
-        `AI generated ${mapped.length} question(s)! Review and customize them below before saving your draft.`
+        `AI generated ${mapped.length} question(s)! Review, edit, and customize them below.`
       );
+
+      // Smoothly scroll down so the generated questions are immediately visible
+      setTimeout(() => {
+        questionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
     } catch (err) {
       onError?.(err?.response?.data?.message || err?.message || "AI Quiz Generation failed.");
     } finally {
@@ -477,6 +565,18 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
     }
   }
 
+  function openPublishModal(quiz) {
+    const now = new Date();
+    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+    setPublishModalQuiz(quiz);
+    setPublishForm({
+      startAt: toLocalDatetimeInput(now),
+      deadlineAt: toLocalDatetimeInput(oneHourLater),
+      durationMinutes: 30,
+      maxAttempts: 1,
+    });
+  }
+
   async function handlePublishSubmit(e) {
     e.preventDefault();
     if (!publishModalQuiz) return;
@@ -488,8 +588,14 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
       onError?.("Please select valid start and deadline dates.");
       return;
     }
-    if (startDate.getTime() <= Date.now()) {
-      onError?.("Quiz start time must be in the future.");
+    // Allow start time from present time (now) onwards, with 10-minute grace window for form completion
+    const nowWithGrace = Date.now() - 10 * 60 * 1000;
+    if (startDate.getTime() < nowWithGrace) {
+      onError?.("Quiz start time cannot be in the past.");
+      return;
+    }
+    if (deadlineDate.getTime() <= Date.now()) {
+      onError?.("Quiz deadline must be in the future.");
       return;
     }
     if (deadlineDate <= startDate) {
@@ -744,10 +850,21 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
             </div>
           </Card>
 
-          <div className="space-y-4">
+          <div ref={questionsRef} className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-2 pt-2">
+              <div>
+                <h3 className="sc-display text-lg font-bold text-slate-800">
+                  Questions <span className="text-emerald-600">({questions.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Review prompts, customize options, mark the correct answer, or add more questions below.
+                </p>
+              </div>
+            </div>
+
             {questions.map((q, qIdx) => (
               <article
-                key={qIdx}
+                key={q.uid || q.questionId || qIdx}
                 className="sc-enter rounded-3xl border border-white bg-white/90 p-6 shadow-lg shadow-slate-200/60"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -1044,6 +1161,15 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    disabled={busyAction === `view-q-${qId}`}
+                    onClick={() => openViewQuestionsModal(quiz)}
+                    className="cursor-pointer rounded-xl bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 active:scale-95 disabled:opacity-50"
+                  >
+                    {busyAction === `view-q-${qId}` ? "Loading..." : `View questions (${quiz.totalQuestions ?? 0})`}
+                  </button>
+
                   {status === "DRAFT" && (
                     <>
                       <button
@@ -1056,15 +1182,7 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setPublishModalQuiz(quiz);
-                          setPublishForm({
-                            startAt: "",
-                            deadlineAt: "",
-                            durationMinutes: 30,
-                            maxAttempts: 1,
-                          });
-                        }}
+                        onClick={() => openPublishModal(quiz)}
                         className="cursor-pointer rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 active:scale-95"
                       >
                         Publish
@@ -1119,25 +1237,70 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
               </p>
             </div>
 
-            <Field label="Starts at (must be in the future)">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700">Starts at</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPublishForm((prev) => ({
+                      ...prev,
+                      startAt: toLocalDatetimeInput(new Date()),
+                    }))
+                  }
+                  className="cursor-pointer text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  ⚡ Set to now (present time)
+                </button>
+              </div>
               <input
                 type="datetime-local"
                 required
                 value={publishForm.startAt}
                 onChange={(e) => setPublishForm((prev) => ({ ...prev, startAt: e.target.value }))}
-                className={inputCls}
+                className={`mt-1.5 ${inputCls}`}
               />
-            </Field>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Accepts current time (opens immediately) or any scheduled future time.
+              </p>
+            </div>
 
-            <Field label="Deadline">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700">Deadline</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const base = publishForm.startAt ? new Date(publishForm.startAt) : new Date();
+                      const plus1h = new Date(base.getTime() + 60 * 60 * 1000);
+                      setPublishForm((prev) => ({ ...prev, deadlineAt: toLocalDatetimeInput(plus1h) }));
+                    }}
+                    className="cursor-pointer text-xs text-slate-500 hover:text-emerald-600 hover:underline"
+                  >
+                    +1 hr
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const base = publishForm.startAt ? new Date(publishForm.startAt) : new Date();
+                      const plus24h = new Date(base.getTime() + 24 * 60 * 60 * 1000);
+                      setPublishForm((prev) => ({ ...prev, deadlineAt: toLocalDatetimeInput(plus24h) }));
+                    }}
+                    className="cursor-pointer text-xs text-slate-500 hover:text-emerald-600 hover:underline"
+                  >
+                    +1 day
+                  </button>
+                </div>
+              </div>
               <input
                 type="datetime-local"
                 required
                 value={publishForm.deadlineAt}
                 onChange={(e) => setPublishForm((prev) => ({ ...prev, deadlineAt: e.target.value }))}
-                className={inputCls}
+                className={`mt-1.5 ${inputCls}`}
               />
-            </Field>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Time limit (1 to 1440 min)">
@@ -1297,6 +1460,164 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
                   </table>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+      {/* ============ View Questions modal ============ */}
+      {previewModal.open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm"
+          onClick={() => setPreviewModal({ open: false, loading: false, quiz: null, questions: [] })}
+        >
+          <div
+            className="sc-pop sc-scroll max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-emerald-600">
+                    {previewModal.quiz?.subjectCode ?? `Subject #${previewModal.quiz?.subjectId}`}
+                  </span>
+                  <StatusPill status={String(previewModal.quiz?.status ?? "DRAFT").toUpperCase()} />
+                </div>
+                <h3 className="sc-display mt-1 text-xl font-bold text-slate-800">
+                  {previewModal.quiz?.title ?? "Quiz questions"}
+                </h3>
+                {previewModal.quiz?.description && (
+                  <p className="mt-1 text-sm text-slate-500">{previewModal.quiz.description}</p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewModal({ open: false, loading: false, quiz: null, questions: [] })}
+                aria-label="Close"
+                className="cursor-pointer rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+
+            {previewModal.loading ? (
+              <div className="space-y-3 py-8">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                ))}
+              </div>
+            ) : previewModal.questions.length === 0 ? (
+              <div className="py-12 text-center text-slate-400">
+                <p className="font-semibold text-slate-600">No questions saved in this quiz</p>
+                <p className="mt-1 text-xs">Edit the draft to add or generate questions.</p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-50 p-3.5 text-xs text-slate-600">
+                  <span>Total questions: <strong className="text-slate-800">{previewModal.questions.length}</strong></span>
+                  <span>Total marks: <strong className="text-emerald-600">{previewModal.questions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0)}</strong></span>
+                  <span>Difficulty: <strong className="capitalize text-slate-800">{String(previewModal.quiz?.difficulty || "Medium").toLowerCase()}</strong></span>
+                  {previewModal.quiz?.durationMinutes && (
+                    <span>Time limit: <strong className="text-slate-800">{previewModal.quiz.durationMinutes} min</strong></span>
+                  )}
+                </div>
+
+                {previewModal.questions.map((q, idx) => (
+                  <div key={q.uid || q.questionId || idx} className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-600">
+                          {idx + 1}
+                        </span>
+                        <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 shadow-xs">
+                          {q.questionType === "TRUE_FALSE" ? "True / False" : "Multiple choice"}
+                        </span>
+                        <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 shadow-xs capitalize">
+                          {String(q.difficulty || "medium").toLowerCase()}
+                        </span>
+                      </span>
+                      <span className="text-xs font-bold text-emerald-600">
+                        {q.marks || 1} mark{(q.marks || 1) === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    <p className="mt-3 text-sm font-semibold text-slate-800">
+                      {q.question}
+                    </p>
+
+                    <div className="mt-3 space-y-2">
+                      {q.options?.map((opt, optIdx) => (
+                        <div
+                          key={optIdx}
+                          className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs transition ${
+                            opt.isCorrect
+                              ? "border border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold"
+                              : "border border-slate-100 bg-white text-slate-600"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                              opt.isCorrect ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400"
+                            }`}>
+                              {String.fromCharCode(65 + optIdx)}
+                            </span>
+                            <span>{opt.text}</span>
+                          </span>
+                          {opt.isCorrect && (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              ✓ Correct answer
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {q.explanation && (
+                      <div className="mt-3 rounded-xl border border-slate-100 bg-white p-3 text-xs text-slate-600">
+                        <strong className="text-slate-700">Explanation:</strong> {q.explanation}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModal({ open: false, loading: false, quiz: null, questions: [] })}
+                    className={ghostBtn}
+                  >
+                    Close
+                  </button>
+                  {String(previewModal.quiz?.status ?? "DRAFT").toUpperCase() === "DRAFT" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetQuiz = previewModal.quiz;
+                          setPreviewModal({ open: false, loading: false, quiz: null, questions: [] });
+                          openEditDraftBuilder(targetQuiz);
+                        }}
+                        className={ghostBtn}
+                      >
+                        Edit draft in builder
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetQuiz = previewModal.quiz;
+                          setPreviewModal({ open: false, loading: false, quiz: null, questions: [] });
+                          openPublishModal(targetQuiz);
+                        }}
+                        className={primaryBtn}
+                      >
+                        Publish quiz
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
