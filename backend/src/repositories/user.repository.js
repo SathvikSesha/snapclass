@@ -47,3 +47,11 @@ export async function findUserById(userId) {
 
   return rows[0] ?? null;
 }
+
+export async function updateUserPassword(userId, passwordHash) {
+  const [result] = await pool.execute(
+    `UPDATE users SET password_hash = ? WHERE user_id = ?`,
+    [passwordHash, userId]
+  );
+  return result.affectedRows;
+}

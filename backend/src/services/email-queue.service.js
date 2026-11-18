@@ -94,3 +94,11 @@ export async function queueAccountRemovalEmail({ email, fullName, role }) {
     role,
   });
 }
+
+export async function queuePasswordResetEmail({ email, otp }) {
+  return queueEmail({
+    type: 'PASSWORD_RESET',
+    email,
+    otp,
+  });
+}

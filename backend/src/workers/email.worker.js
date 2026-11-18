@@ -168,15 +168,29 @@ startWorker().catch((error) => {
 
 function buildEmail(job) {
   if (job.type === 'OTP') {
-    const isVerification = job.purpose === 'EMAIL_VERIFICATION';
-
     if (
       !job.email ||
       typeof job.otp !== 'string' ||
-      !['EMAIL_VERIFICATION', 'MFA'].includes(job.purpose)
+      !['EMAIL_VERIFICATION', 'MFA', 'PASSWORD_RESET'].includes(job.purpose)
     ) {
       throw new Error('Invalid OTP email job.');
     }
+
+    if (job.purpose === 'PASSWORD_RESET') {
+      return {
+        to: job.email,
+        subject: 'Reset your SnapClass password',
+        text: [
+          `Your SnapClass password reset code is: ${job.otp}`,
+          '',
+          'This code expires in 10 minutes.',
+          'Do not share this code with anyone.',
+          'If you did not request this, you can ignore this email.',
+        ].join('\n'),
+      };
+    }
+
+    const isVerification = job.purpose === 'EMAIL_VERIFICATION';
 
     return {
       to: job.email,
@@ -189,6 +203,23 @@ function buildEmail(job) {
         `This code expires in ${isVerification ? 10 : 5} minutes.`,
         'Do not share this code with anyone.',
         'If you did not request this code, you can ignore this email.',
+      ].join('\n'),
+    };
+  }
+
+  if (job.type === 'PASSWORD_RESET') {
+    if (!job.email || typeof job.otp !== 'string') {
+      throw new Error('Invalid PASSWORD_RESET email job.');
+    }
+    return {
+      to: job.email,
+      subject: 'Reset your SnapClass password',
+      text: [
+        `Your SnapClass password reset code is: ${job.otp}`,
+        '',
+        'This code expires in 10 minutes.',
+        'Do not share this code with anyone.',
+        'If you did not request this, you can ignore this email.',
       ].join('\n'),
     };
   }

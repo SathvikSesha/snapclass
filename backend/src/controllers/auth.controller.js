@@ -1,5 +1,5 @@
 import { findUserById } from '../repositories/user.repository.js';
-import { registerAdmin,startAdminLogin,completeAdminMfa,sendEmailVerificationOtp,verifyUserEmail, refreshAuthSession } from '../services/auth.service.js';
+import { registerAdmin,startAdminLogin,completeAdminMfa,sendEmailVerificationOtp,verifyUserEmail, refreshAuthSession, requestPasswordReset, verifyPasswordResetOtp, resetPassword } from '../services/auth.service.js';
 import {setAuthCookies,setAccessCookie, clearAuthCookies} from '../utils/cookies.js';
 import { revokeRefreshSession } from '../services/session.service.js';
 import { env } from '../config/env.js';
@@ -334,6 +334,48 @@ export async function getMeController(req, res, next) {
       success: false,
       message: 'No active session found.',
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function forgotPasswordController(req, res, next) {
+  try {
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (!email || email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+    }
+    const result = await requestPasswordReset(email);
+    return res.status(200).json({ success: true, message: result.message });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function verifyResetOtpController(req, res, next) {
+  try {
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const otp = typeof req.body.otp === 'string' ? req.body.otp.trim() : '';
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({ success: false, message: 'A valid email and 6-digit OTP are required.' });
+    }
+    const result = await verifyPasswordResetOtp({ email, otp });
+    return res.status(200).json({ success: true, resetToken: result.resetToken, email: result.email });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetPasswordController(req, res, next) {
+  try {
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const resetToken = typeof req.body.resetToken === 'string' ? req.body.resetToken.trim() : '';
+    const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Email, reset token and new password are required.' });
+    }
+    const result = await resetPassword({ email, resetToken, newPassword });
+    return res.status(200).json({ success: true, message: result.message });
   } catch (error) {
     next(error);
   }

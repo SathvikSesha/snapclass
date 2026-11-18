@@ -8,8 +8,11 @@ import {
   loginWithPassword,
   parseApiError,
   registerByRole,
+  requestPasswordReset,
+  resetPassword,
   sendEmailVerificationOtp,
   verifyEmailOtp,
+  verifyPasswordResetOtp,
   verifyRoleMfa,
 } from "../services/auth.service";
 
@@ -196,6 +199,7 @@ export default function AuthPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [launchProgress, setLaunchProgress] = useState(0);
   const [authenticatedUser, setAuthenticatedUser] = useState(null);
+  const [resetToken, setResetToken] = useState('');
 
   const theme = ROLE_THEMES[role];
   const isStudent = role === "student";
@@ -488,6 +492,72 @@ export default function AuthPage() {
       }
     } catch (err) {
       setErrorMessage(parseApiError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ===== FLOW 5: FORGOT PASSWORD =====
+  async function handleForgotPasswordSubmit(e) {
+    e.preventDefault();
+    clearAlerts();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await requestPasswordReset(form.email);
+      setStatusMessage(res?.message || 'If that email is registered, a reset code has been sent.');
+      setStage('verify-reset-otp');
+    } catch (err) {
+      // Always show generic message even on error (prevent enumeration)
+      setStatusMessage('If that email is registered, a reset code has been sent.');
+      setStage('verify-reset-otp');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyResetOtp(otpCode) {
+    clearAlerts();
+    setLoading(true);
+    try {
+      const res = await verifyPasswordResetOtp({ email: form.email, otp: otpCode });
+      setResetToken(res.resetToken);
+      setStatusMessage('Code verified! Enter your new password below.');
+      setStage('reset-password');
+    } catch (err) {
+      setErrorMessage(parseApiError(err, 'Invalid or expired reset code.'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPasswordSubmit(e) {
+    e.preventDefault();
+    clearAlerts();
+    if (form.password.length < 12) {
+      setErrorMessage('New password must be at least 12 characters.');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await resetPassword({
+        email: form.email,
+        resetToken,
+        newPassword: form.password,
+      });
+      setStatusMessage(res?.message || 'Password updated! Please sign in with your new password.');
+      setForm((prev) => ({ ...prev, password: '', confirmPassword: '' }));
+      setResetToken('');
+      setStage('login');
+    } catch (err) {
+      setErrorMessage(parseApiError(err, 'Could not reset password. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -797,6 +867,113 @@ export default function AuthPage() {
                 </div>
               )}
 
+              {/* Forgot Password — Step 1: Enter email */}
+              {stage === 'forgot-password' && (
+                <div className="sc-enter">
+                  <div className="mb-6">
+                    <h2 className="sc-display text-xl font-bold text-slate-800">Reset your password</h2>
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      Enter your registered email and we will send you a 6-digit reset code.
+                    </p>
+                  </div>
+                  <form onSubmit={handleForgotPasswordSubmit} className="sc-stagger space-y-4">
+                    <Field label="Registered email">
+                      <input
+                        type="email"
+                        name="email"
+                        value={form.email}
+                        onChange={handleInputChange}
+                        required
+                        autoComplete="email"
+                        placeholder={`${role}@snapclass.edu`}
+                        className={`${inputBase} ${theme.focus}`}
+                      />
+                    </Field>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className={`sc-btn w-full cursor-pointer rounded-xl bg-gradient-to-r ${theme.buttonGradient} px-5 py-3.5 text-sm font-semibold text-white shadow-lg ${theme.shadow} transition duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {loading ? 'Sending code...' : 'Send reset code'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { clearAlerts(); setStage('login'); }}
+                      className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline"
+                    >
+                      ← Back to sign in
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Forgot Password — Step 2: Verify OTP */}
+              {stage === 'verify-reset-otp' && (
+                <div className="sc-enter">
+                  <OtpForm
+                    key="verify-reset-otp-vault"
+                    badge="PASSWORD RESET • VERIFY CODE"
+                    title="Enter Reset Code"
+                    description="Enter the 6-digit code sent to your email to verify your identity before setting a new password."
+                    email={form.email}
+                    accentClass={theme.buttonGradient}
+                    loading={loading}
+                    onSubmit={handleVerifyResetOtp}
+                    onResend={async () => {
+                      clearAlerts();
+                      setLoading(true);
+                      try {
+                        await requestPasswordReset(form.email);
+                        setStatusMessage('A new reset code has been sent.');
+                      } catch {
+                        setStatusMessage('A new reset code has been sent.');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    onBack={() => { clearAlerts(); setStage('forgot-password'); }}
+                  />
+                </div>
+              )}
+
+              {/* Forgot Password — Step 3: Set new password */}
+              {stage === 'reset-password' && (
+                <div className="sc-enter">
+                  <div className="mb-6">
+                    <h2 className="sc-display text-xl font-bold text-slate-800">Set new password</h2>
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      Choose a strong password of at least 12 characters.
+                    </p>
+                  </div>
+                  <form onSubmit={handleResetPasswordSubmit} className="sc-stagger space-y-4">
+                    <PasswordField
+                      label="New password (min 12 characters)"
+                      name="password"
+                      value={form.password}
+                      onChange={handleInputChange}
+                      minLength={12}
+                      placeholder="At least 12 characters"
+                      focus={theme.focus}
+                    />
+                    <PasswordField
+                      label="Confirm new password"
+                      name="confirmPassword"
+                      value={form.confirmPassword}
+                      onChange={handleInputChange}
+                      placeholder="Re-enter new password"
+                      focus={theme.focus}
+                    />
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className={`sc-btn w-full cursor-pointer rounded-xl bg-gradient-to-r ${theme.buttonGradient} px-5 py-3.5 text-sm font-semibold text-white shadow-lg ${theme.shadow} transition duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {loading ? 'Updating password...' : 'Update password'}
+                    </button>
+                  </form>
+                </div>
+              )}
+
               {/* Register */}
               {stage === "register" && (
                 <form
@@ -1049,6 +1226,18 @@ export default function AuthPage() {
                         placeholder="Enter your password"
                         focus={theme.focus}
                       />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearAlerts();
+                            setStage('forgot-password');
+                          }}
+                          className={`text-xs font-semibold ${theme.accentText} hover:underline`}
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
                     </>
                   )}
 
