@@ -25,13 +25,18 @@ function formatSessionDate(val) {
 
 function formatMarkedTime(val) {
   if (!val) return "—";
-  const d = new Date(String(val).replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return String(val);
+  const text = String(val);
+  const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+    ? text.replace(" ", "T")
+    : text.replace(" ", "T") + "Z";
+  const d = new Date(utcStr);
+  if (Number.isNaN(d.getTime())) return text.replace("T", " ");
   return d.toLocaleString("en-IN", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -71,6 +76,10 @@ export default function StudentAttendanceModule({
       setSelectedSubjectId(String(initialSubjectId));
     }
   }, [initialSubjectId]);
+
+  const currentSubject = registeredSubjects.find(
+    (s) => String(s.id ?? s.subjectId) === String(selectedSubjectId)
+  ) || null;
 
   // Fallback: pick the first subject if none is selected yet
   useEffect(() => {
@@ -209,14 +218,23 @@ export default function StudentAttendanceModule({
                     {isEligible ? "Eligible for exams" : "Attendance shortage"}
                   </span>
                   <h3 className="sc-display mt-2 truncate text-lg font-bold text-slate-800">
-                    {summary.subjectName ?? "Course attendance"}
+                    {summary?.subjectName ??
+                      summary?.subject?.subjectName ??
+                      currentSubject?.subjectName ??
+                      currentSubject?.name ??
+                      "Course attendance"}
                   </h3>
-                  <p className="font-mono text-xs font-bold text-indigo-600">{summary.subjectCode}</p>
+                  <p className="font-mono text-xs font-bold text-indigo-600">
+                    {summary?.subjectCode ??
+                      summary?.subject?.subjectCode ??
+                      currentSubject?.subjectCode ??
+                      ""}
+                  </p>
                   <p className="mt-2 text-sm text-slate-500">
                     You attended{" "}
-                    <strong className="text-slate-800">{summary.presentCount ?? 0}</strong> of{" "}
+                    <strong className="text-slate-800">{summary?.presentCount ?? 0}</strong> of{" "}
                     <strong className="text-slate-800">
-                      {summary.totalClasses ?? summary.totalSessions ?? 0}
+                      {summary?.totalClasses ?? summary?.totalSessions ?? 0}
                     </strong>{" "}
                     classes.
                   </p>
@@ -274,8 +292,8 @@ export default function StudentAttendanceModule({
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {records.map((rec, idx) => {
-                    const status = String(rec.status ?? "").toUpperCase();
-                    const method = String(rec.method ?? "MANUAL").toUpperCase();
+                    const status = String(rec.status ?? "ABSENT").toUpperCase();
+                    const method = String(rec.method ?? rec.markedBy ?? "FACULTY").toUpperCase();
                     const isPresent = status === "PRESENT";
                     const isAi = method.includes("AI") || method.includes("FACE");
 
@@ -306,7 +324,9 @@ export default function StudentAttendanceModule({
                             {isAi ? "Face recognition" : "Teacher"}
                           </span>
                         </td>
-                        <td className="px-3 py-3.5 text-slate-400">{formatMarkedTime(rec.markedAt)}</td>
+                        <td className="px-3 py-3.5 text-slate-400">
+                          {formatMarkedTime(rec.markedAt ?? rec.updatedAt)}
+                        </td>
                       </tr>
                     );
                   })}

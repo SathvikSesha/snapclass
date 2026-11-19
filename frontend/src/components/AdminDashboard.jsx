@@ -37,25 +37,53 @@ function unwrapList(result, key) {
   return [];
 }
 
+// Convert a UTC datetime string (from DB/API) into a value suitable for
+// a <input type="datetime-local"> element, which expects LOCAL time.
 function toDateTimeLocal(value) {
   if (!value) return "";
+  // Parse as UTC (append Z if no timezone indicator is present so the
+  // browser does not misinterpret the string as local time).
   const text = String(value);
-  const match = text.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::\d{2})?/);
-  return match ? `${match[1]}T${match[2]}` : "";
+  const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+    ? text
+    : text.replace(" ", "T") + "Z";
+  const d = new Date(utcStr);
+  if (Number.isNaN(d.getTime())) return "";
+  // Format in LOCAL time for the input value.
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
 }
 
+// Convert a <input type="datetime-local"> value (LOCAL time, no timezone)
+// into a UTC "YYYY-MM-DD HH:mm:ss" string that the backend stores as UTC.
 function toBackendDateTime(value) {
   if (!value) return "";
-  const clean = value.replace("T", " ");
-  return clean.length === 16 ? `${clean}:00` : clean;
+  // new Date(value) where value has no timezone treats it as LOCAL time
+  // in modern browsers — which is what we want: the admin typed local time.
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+    ` ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
 }
 
+// Display a UTC datetime string (from API) in the user's local timezone.
 function formatReadableDateTime(value) {
   if (!value) return "—";
-  const normalized = String(value).replace(" ", "T");
-  const parsed = new Date(normalized);
+  // Treat the value as UTC if no timezone is specified, so the browser
+  // correctly converts it to local time for display.
+  const text = String(value);
+  const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+    ? text.replace(" ", "T")
+    : text.replace(" ", "T") + "Z";
+  const parsed = new Date(utcStr);
   if (Number.isNaN(parsed.getTime())) {
-    return String(value).replace("T", " ");
+    return text.replace("T", " ");
   }
   return parsed.toLocaleString("en-IN", {
     day: "2-digit",

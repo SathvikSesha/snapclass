@@ -16,13 +16,18 @@ function unwrap(val, key) {
 
 function formatDateTime(val) {
   if (!val) return "—";
-  const d = new Date(val);
-  if (Number.isNaN(d.getTime())) return String(val);
+  const text = String(val);
+  const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+    ? text.replace(" ", "T")
+    : text.replace(" ", "T") + "Z";
+  const d = new Date(utcStr);
+  if (Number.isNaN(d.getTime())) return text.replace("T", " ");
   return d.toLocaleString("en-IN", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -105,7 +110,11 @@ export default function StudentQuizzesModule({ onNotify, onError, onRefreshMarks
     if (mode !== "attempt" || !activeAttempt?.expiresAt) return;
 
     autoSubmittedRef.current = false;
-    const expiryMs = new Date(activeAttempt.expiresAt).getTime();
+    const text = String(activeAttempt.expiresAt);
+    const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+      ? text.replace(" ", "T")
+      : text.replace(" ", "T") + "Z";
+    const expiryMs = new Date(utcStr).getTime();
 
     const tick = () => {
       const diffSec = Math.max(0, Math.floor((expiryMs - Date.now()) / 1000));

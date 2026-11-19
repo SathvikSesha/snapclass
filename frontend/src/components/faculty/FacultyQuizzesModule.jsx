@@ -155,6 +155,27 @@ function toLocalDatetimeInput(date = new Date()) {
   return `${y}-${m}-${d}T${hh}:${mm}`;
 }
 
+// Display a UTC datetime string (from DB/API) in the user's local timezone.
+function formatReadableDateTime(value) {
+  if (!value) return "—";
+  const text = String(value);
+  const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+    ? text.replace(" ", "T")
+    : text.replace(" ", "T") + "Z";
+  const parsed = new Date(utcStr);
+  if (Number.isNaN(parsed.getTime())) {
+    return text.replace("T", " ");
+  }
+  return parsed.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-50 disabled:text-slate-400";
 
@@ -1158,6 +1179,12 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
                       </span>
                     )}
                   </div>
+
+                  {(quiz.start_at || quiz.startAt) && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      📅 Window: {formatReadableDateTime(quiz.start_at ?? quiz.startAt)} — {formatReadableDateTime(quiz.deadline_at ?? quiz.deadlineAt)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
@@ -1362,7 +1389,7 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
               <div>
                 <p className="text-xs font-semibold text-sky-600">Quiz results</p>
                 <h3 className="sc-display mt-1 text-xl font-bold text-slate-800">
-                  {resultsModal.data?.quiz?.title ?? "Quiz results"}
+                  {resultsModal.data?.title ?? resultsModal.data?.quiz?.title ?? "Quiz results"}
                 </h3>
               </div>
 
@@ -1430,32 +1457,49 @@ export default function FacultyQuizzesModule({ assignedSubjects = [], onNotify, 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {unwrap(resultsModal.data, "attempts").map((att, idx) => (
-                        <tr key={att.attemptId ?? idx} className="transition-colors hover:bg-emerald-50/40">
-                          <td className="px-3 py-3 font-semibold text-slate-800">
-                            {att.studentName ?? att.fullName ?? att.email ?? `Student #${att.studentId}`}
-                          </td>
-                          <td className="px-3 py-3 text-slate-500 capitalize">
-                            {String(att.status ?? "SUBMITTED").toLowerCase().replace(/_/g, " ")}
-                          </td>
-                          <td className="px-3 py-3 font-bold text-emerald-600">
-                            {att.score ?? 0}{" "}
-                            <span className="font-medium text-slate-400">
-                              / {resultsModal.data?.quiz?.totalMarks ?? "—"}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 text-slate-400">
-                            {att.submittedAt ? new Date(att.submittedAt).toLocaleString("en-IN") : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                      {unwrap(resultsModal.data, "attempts").length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="py-8 text-center text-slate-400">
-                            No student attempts yet.
-                          </td>
-                        </tr>
-                      )}
+                      {(() => {
+                        const attemptsList =
+                          unwrap(resultsModal.data, "results").length > 0
+                            ? unwrap(resultsModal.data, "results")
+                            : unwrap(resultsModal.data, "attempts");
+
+                        if (attemptsList.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={4} className="py-8 text-center text-slate-400">
+                                No student attempts yet.
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return attemptsList.map((att, idx) => (
+                          <tr key={att.attemptId ?? idx} className="transition-colors hover:bg-emerald-50/40">
+                            <td className="px-3 py-3">
+                              <p className="font-semibold text-slate-800">
+                                {att.studentName ?? att.fullName ?? (att.studentId ? `Student #${att.studentId}` : "Student")}
+                              </p>
+                              {(att.studentEmail ?? att.email) && (
+                                <p className="text-xs text-slate-400">
+                                  {att.studentEmail ?? att.email}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-slate-500 capitalize">
+                              {String(att.status ?? "SUBMITTED").toLowerCase().replace(/_/g, " ")}
+                            </td>
+                            <td className="px-3 py-3 font-bold text-emerald-600">
+                              {att.score ?? 0}{" "}
+                              <span className="font-medium text-slate-400">
+                                / {att.totalMarks ?? resultsModal.data?.totalMarks ?? resultsModal.data?.quiz?.totalMarks ?? "—"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-slate-400">
+                              {att.submittedAt ? formatReadableDateTime(att.submittedAt) : "—"}
+                            </td>
+                          </tr>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>

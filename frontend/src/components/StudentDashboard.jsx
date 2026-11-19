@@ -16,6 +16,31 @@ function unwrap(val, key) {
   return [];
 }
 
+/**
+ * Parse a UTC datetime string from the API and display it in the user's
+ * local timezone. The DB stores times as UTC without a timezone suffix, so
+ * we append "Z" before passing the string to new Date() — otherwise the
+ * browser would interpret it as local time and show the wrong hour.
+ */
+function formatWindowDateTime(value) {
+  if (!value) return "";
+  const text = String(value);
+  // If the string already carries timezone info (Z or ±HH:MM) use it as-is.
+  const utcStr = /[Zz]$|[+-]\d{2}:\d{2}$/.test(text)
+    ? text.replace(" ", "T")
+    : text.replace(" ", "T") + "Z";
+  const d = new Date(utcStr);
+  if (Number.isNaN(d.getTime())) return text;
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function getStudentGreeting(dateObj) {
   const hour = dateObj.getHours();
   if (hour < 12) {
@@ -152,6 +177,14 @@ export default function StudentDashboard() {
   const isWindowOpen = windowStatus === "ACTIVE" || windowStatus === "OPEN";
 
   const recentActivity = useMemo(() => unwrap(dashboard, "recentActivity"), [dashboard]);
+
+  const attendanceSnapshot = useMemo(() => {
+    const fromDash = unwrap(dashboard, "attendanceSnapshot");
+    if (fromDash.length > 0) return fromDash;
+    return unwrap(dashboard, "recentActivity").filter(
+      (a) => a.subjectCode || a.attendancePercentage !== undefined
+    );
+  }, [dashboard]);
 
   const creditPct = Math.min(100, Math.round((registeredCredits / creditLimit) * 100));
 
@@ -497,10 +530,15 @@ export default function StudentDashboard() {
                       <p className="text-sm text-slate-500">Your percentage in each course</p>
 
                       <div className="mt-4 space-y-3">
-                        {recentActivity.map((act, idx) => {
+                        {attendanceSnapshot.map((act, idx) => {
                           const pct = Number(act.attendancePercentage ?? 0);
+                          const subId = act.subjectId ?? act.id;
                           return (
-                            <div key={act.subjectCode ?? idx} className="rounded-2xl bg-slate-50/80 p-4">
+                            <div
+                              key={act.subjectCode ?? idx}
+                              onClick={() => subId && jumpToSubjectTab(subId, "attendance")}
+                              className="cursor-pointer rounded-2xl bg-slate-50/80 p-4 transition duration-200 hover:bg-white hover:shadow-md"
+                            >
                               <div className="flex items-center justify-between gap-2 text-sm">
                                 <span className="truncate font-semibold text-slate-700">
                                   {act.subjectCode} — {act.subjectName}
@@ -517,11 +555,17 @@ export default function StudentDashboard() {
                                   style={{ width: `${Math.min(100, pct)}%` }}
                                 />
                               </div>
+                              <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                                <span>
+                                  {act.presentCount ?? 0} of {act.totalSessions ?? act.totalClasses ?? 0} classes attended
+                                </span>
+                                <span className="font-medium text-indigo-600">View details →</span>
+                              </div>
                             </div>
                           );
                         })}
 
-                        {recentActivity.length === 0 && (
+                        {attendanceSnapshot.length === 0 && (
                           <EmptyState text="No attendance recorded yet." />
                         )}
                       </div>
@@ -554,8 +598,8 @@ export default function StudentDashboard() {
                         </p>
                         {windowInfo.startsAt && (
                           <p className="mt-1 text-xs text-slate-400">
-                            Window: {new Date(windowInfo.startsAt).toLocaleString("en-IN")} to{" "}
-                            {new Date(windowInfo.endsAt).toLocaleString("en-IN")}
+                            Window: {formatWindowDateTime(windowInfo.startsAt)} to{" "}
+                            {formatWindowDateTime(windowInfo.endsAt)}
                           </p>
                         )}
                       </div>
@@ -722,7 +766,7 @@ export default function StudentDashboard() {
                             </td>
                             <td className="px-3 py-4 text-slate-400">
                               {item.latestSubmittedAt
-                                ? new Date(item.latestSubmittedAt).toLocaleString("en-IN")
+                                ? formatWindowDateTime(item.latestSubmittedAt)
                                 : "—"}
                             </td>
                           </tr>

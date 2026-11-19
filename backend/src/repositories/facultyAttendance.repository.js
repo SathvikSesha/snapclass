@@ -200,7 +200,7 @@ export const saveAttendanceSession = async ({
       sessionId,
       student.studentId,
       student.status,
-      'FACULTY',
+      student.markedBy === 'AI' ? 'AI' : 'FACULTY',
     ]);
 
     await connection.query(
@@ -209,7 +209,7 @@ export const saveAttendanceSession = async ({
        VALUES ?
        ON DUPLICATE KEY UPDATE
          status = VALUES(status),
-         marked_by = 'FACULTY',
+         marked_by = VALUES(marked_by),
          updated_at = CURRENT_TIMESTAMP`,
       [records]
     );

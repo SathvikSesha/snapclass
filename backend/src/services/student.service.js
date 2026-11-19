@@ -265,6 +265,7 @@ export const getStudentDashboard = async (userId) => {
       endsAt: null,
     },
 
+    attendanceSnapshot: dashboard.attendanceSnapshot || [],
     recentActivity: dashboard.recentActivity,
   };
 };

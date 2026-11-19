@@ -108,12 +108,16 @@ export async function getFacultyQuizResults(userId, quizId) {
     [quizId]
   );
 
-  // Return individual submitted attempts.
+  // Return individual submitted attempts with student names and marks.
   const [attemptRows] = await pool.execute(
     `
     SELECT
       qa.attempt_id AS attemptId,
       qa.student_id AS studentId,
+      s.full_name AS studentName,
+      s.full_name AS fullName,
+      u.email AS studentEmail,
+      u.email,
       qa.attempt_number AS attemptNumber,
       qa.status,
       qa.score,
@@ -122,6 +126,10 @@ export async function getFacultyQuizResults(userId, quizId) {
       qa.submitted_at AS submittedAt
 
     FROM quiz_attempts qa
+    LEFT JOIN students s
+      ON s.student_id = qa.student_id
+    LEFT JOIN users u
+      ON u.user_id = s.user_id
     WHERE qa.quiz_id = ?
       AND qa.status IN ('SUBMITTED', 'AUTO_SUBMITTED')
 
@@ -132,6 +140,7 @@ export async function getFacultyQuizResults(userId, quizId) {
 
   quiz.summary = summaryRows[0];
   quiz.results = attemptRows;
+  quiz.attempts = attemptRows;
 
   return quiz;
 }

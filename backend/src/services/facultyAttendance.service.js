@@ -149,7 +149,9 @@ export const saveFacultyAttendance = async ({
 
     seenIds.add(studentId);
 
-    return { studentId, status };
+    const markedBy = student?.markedBy === 'AI' ? 'AI' : 'FACULTY';
+
+    return { studentId, status, markedBy };
   });
 
   return attendanceRepository.saveAttendanceSession({

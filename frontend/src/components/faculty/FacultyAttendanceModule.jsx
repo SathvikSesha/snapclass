@@ -324,6 +324,7 @@ export default function FacultyAttendanceModule({
       const records = students.map((s) => ({
         studentId: Number(getStudentId(s)) || getStudentId(s),
         status: s.status === "PRESENT" ? "PRESENT" : "ABSENT",
+        markedBy: s.markedByAi ? "AI" : "FACULTY",
       }));
 
       const res = await saveSubjectAttendance(selectedSubjectId, attendanceDate, records);

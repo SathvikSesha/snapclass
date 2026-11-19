@@ -201,9 +201,54 @@ export const getStudentDashboardData = async (userId) => {
      LIMIT 10`
   );
 
+  const [snapshotRows] = await pool.execute(
+    `SELECT
+       sub.id AS subjectId,
+       sub.subject_code AS subjectCode,
+       sub.name AS subjectName,
+       COUNT(DISTINCT ats.session_id) AS totalSessions,
+       COALESCE(SUM(CASE WHEN ar.status = 'PRESENT' THEN 1 ELSE 0 END), 0) AS presentCount,
+       COALESCE(SUM(CASE WHEN ar.status = 'ABSENT' THEN 1 ELSE 0 END), 0) AS absentCount,
+       CASE
+         WHEN COUNT(DISTINCT ats.session_id) = 0 THEN 0
+         ELSE ROUND(
+           (COALESCE(SUM(CASE WHEN ar.status = 'PRESENT' THEN 1 ELSE 0 END), 0) * 100.0)
+           / COUNT(DISTINCT ats.session_id),
+           2
+         )
+       END AS attendancePercentage
+     FROM subject_students ss
+     INNER JOIN subjects sub ON sub.id = ss.subject_id
+     INNER JOIN students s ON s.student_id = ss.student_id
+     LEFT JOIN attendance_sessions ats ON ats.subject_id = sub.id
+     LEFT JOIN attendance_records ar
+       ON ar.session_id = ats.session_id
+       AND ar.student_id = s.student_id
+     WHERE s.user_id = ?
+     GROUP BY sub.id, sub.subject_code, sub.name
+     ORDER BY sub.subject_code ASC`,
+    [userId]
+  );
+
+  const attendanceSnapshot = snapshotRows.map((row) => {
+    const totalSessions = Number(row.totalSessions);
+    const presentCount = Number(row.presentCount);
+    return {
+      subjectId: Number(row.subjectId),
+      subjectCode: row.subjectCode,
+      subjectName: row.subjectName,
+      totalSessions,
+      totalClasses: totalSessions,
+      presentCount,
+      absentCount: totalSessions - presentCount,
+      attendancePercentage: Number(row.attendancePercentage),
+    };
+  });
+
   return {
     student,
     registeredSubjects: Number(subjectRows[0].registeredSubjects),
+    attendanceSnapshot,
     recentActivity: activityRows,
   };
 };
@@ -462,7 +507,7 @@ export const getStudentAttendanceSummary = async ({
 
   const [summaryRows] = await pool.execute(
     `SELECT
-       COUNT(*) AS totalSessions,
+       COUNT(DISTINCT ats.session_id) AS totalSessions,
        COALESCE(SUM(
          CASE WHEN ar.status = 'PRESENT' THEN 1 ELSE 0 END
        ), 0) AS presentCount,
@@ -470,16 +515,16 @@ export const getStudentAttendanceSummary = async ({
          CASE WHEN ar.status = 'ABSENT' THEN 1 ELSE 0 END
        ), 0) AS absentCount
      FROM attendance_sessions ats
-     INNER JOIN attendance_records ar
+     LEFT JOIN attendance_records ar
        ON ar.session_id = ats.session_id
-     WHERE ats.subject_id = ?
-       AND ar.student_id = ?`,
-    [subjectId, student.studentId]
+       AND ar.student_id = ?
+     WHERE ats.subject_id = ?`,
+    [student.studentId, subjectId]
   );
 
   const totalSessions = Number(summaryRows[0].totalSessions);
   const presentCount = Number(summaryRows[0].presentCount);
-  const absentCount = Number(summaryRows[0].absentCount);
+  const absentCount = totalSessions - presentCount;
 
   return {
     subject: {
@@ -487,7 +532,11 @@ export const getStudentAttendanceSummary = async ({
       subjectCode: student.subjectCode,
       subjectName: student.subjectName,
     },
+    subjectId: Number(student.subjectId),
+    subjectCode: student.subjectCode,
+    subjectName: student.subjectName,
     totalSessions,
+    totalClasses: totalSessions,
     presentCount,
     absentCount,
     attendancePercentage: totalSessions === 0
@@ -532,23 +581,38 @@ export const getStudentAttendanceHistory = async ({
   const [rows] = await pool.execute(
     `SELECT
        ats.session_id AS sessionId,
+       DATE_FORMAT(ats.attendance_date, '%Y-%m-%d') AS sessionDate,
        ats.attendance_date AS attendanceDate,
-       ar.status,
-       ar.marked_by AS markedBy,
-       ar.updated_at AS updatedAt
+       COALESCE(ar.status, 'ABSENT') AS status,
+       COALESCE(ar.marked_by, 'FACULTY') AS markedBy,
+       COALESCE(ar.marked_by, 'FACULTY') AS method,
+       COALESCE(ar.updated_at, ats.updated_at, ats.created_at) AS updatedAt,
+       COALESCE(ar.updated_at, ats.updated_at, ats.created_at) AS markedAt
      FROM attendance_sessions ats
-     INNER JOIN attendance_records ar
+     LEFT JOIN attendance_records ar
        ON ar.session_id = ats.session_id
-     WHERE ats.subject_id = ?
        AND ar.student_id = ?
+     WHERE ats.subject_id = ?
      ORDER BY ats.attendance_date DESC, ats.session_id DESC`,
-    [subjectId, studentId]
+    [studentId, subjectId]
   );
 
   return rows.map((row) => ({
     ...row,
     sessionId: Number(row.sessionId),
+    sessionDate:
+      typeof row.sessionDate === 'string'
+        ? row.sessionDate
+        : row.sessionDate instanceof Date
+        ? row.sessionDate.toISOString().slice(0, 10)
+        : String(row.sessionDate),
+    attendanceDate:
+      typeof row.sessionDate === 'string'
+        ? row.sessionDate
+        : row.attendanceDate,
     status: row.status,
+    markedBy: row.markedBy,
+    method: row.method,
   }));
 };
 
