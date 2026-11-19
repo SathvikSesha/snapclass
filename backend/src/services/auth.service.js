@@ -11,7 +11,6 @@ import { createRefreshSession, rotateRefreshSession, revokeAllUserSessions } fro
 import { findUserForAuthentication, updateUserPassword } from '../repositories/user.repository.js';
 import { randomBytes } from 'node:crypto';
 import { redis } from '../config/redis.js';
-import { sendPasswordResetEmail } from '../utils/email.js';
 
 
 export async function registerAdmin({ fullName, email, password }) {
@@ -449,7 +448,7 @@ export async function verifyPasswordResetOtp({ email, otp }) {
 
 export async function resetPassword({ email, resetToken, newPassword }) {
   if (!newPassword || newPassword.length < 12 || Buffer.byteLength(newPassword, 'utf8') > 1024) {
-    const error = new Error('Password must be at least 12 characters.');
+    const error = new Error('New password must be at least 12 characters long.');
     error.statusCode = 400;
     throw error;
   }
@@ -467,8 +466,9 @@ export async function resetPassword({ email, resetToken, newPassword }) {
   }
   const passwordHash = await hashPassword(newPassword);
   await updateUserPassword(user.user_id, passwordHash);
-  // Invalidate token and all active sessions
+  // Invalidate the reset token, OTP cooldown, and all active sessions
   await redis.del(`snapclass:password-reset-token:${user.user_id}`);
+  await redis.del(`snapclass:otp:resend:PASSWORD_RESET:${user.user_id}`);
   await revokeAllUserSessions(String(user.user_id));
   return { message: 'Password updated successfully. Please sign in with your new password.' };
 }

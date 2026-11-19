@@ -35,6 +35,7 @@ const router = Router();
 router.get('/dashboard', requireFaculty, facultyDashboard);
 router.get('/subjects', requireFaculty, getFacultySubjectsController);
 router.post('/subjects/:subjectId/request', requireFaculty, requestSubjectAccessController);
+
 router.get(
   '/subjects/:subjectId/attendance/dates',
   requireFaculty,

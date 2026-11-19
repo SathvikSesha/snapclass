@@ -253,6 +253,7 @@ export default function AuthPage() {
     setStudentLoginMethod("password");
     setFaceImage(null);
     setCameraOpen(false);
+    setResetToken('');
     clearAlerts();
   }
 
@@ -261,6 +262,9 @@ export default function AuthPage() {
     setFaceImage(null);
     setCameraOpen(false);
     clearAlerts();
+    if (nextStage === "login") {
+      setResetToken('');
+    }
     if (nextStage === "login" && studentLoginMethod === "face") {
       setCameraOpen(true);
     }
@@ -562,7 +566,6 @@ export default function AuthPage() {
       setLoading(false);
     }
   }
-
   /* ----------------------------------------------------------------
      Shared animation styles (self-contained, no tailwind config needed)
   ----------------------------------------------------------------- */
@@ -648,14 +651,14 @@ export default function AuthPage() {
   const steps = [
     {
       id: "step1",
-      title: stage === "register" ? "Account details" : "Your credentials",
-      active: stage === "register" || stage === "login",
-      done: stage === "verify-email" || stage === "verify-mfa",
+      title: stage === "register" ? "Account details" : stage === "forgot-password" ? "Enter email" : "Your credentials",
+      active: stage === "register" || stage === "login" || stage === "forgot-password",
+      done: stage === "verify-email" || stage === "verify-mfa" || stage === "verify-reset-otp" || stage === "reset-password",
     },
     {
       id: "step2",
-      title: stage === "verify-email" ? "Verify your email" : "Security code",
-      active: stage === "verify-email" || stage === "verify-mfa",
+      title: stage === "verify-email" ? "Verify your email" : stage === "verify-reset-otp" ? "Verify reset code" : stage === "reset-password" ? "Set new password" : "Security code",
+      active: stage === "verify-email" || stage === "verify-mfa" || stage === "verify-reset-otp" || stage === "reset-password",
       done: false,
     },
     { id: "step3", title: "Open workspace", active: false, done: false },

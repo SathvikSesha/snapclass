@@ -6,7 +6,7 @@ import {
   getSubjectRequests,
   reviewSubjectRequest,
 } from '../controllers/adminSubjects.controller.js';
-import { extractUser, requireAdmin } from '../middleware/auth.middleware.js';
+import { requireAdmin } from '../middleware/auth.middleware.js';
 import {
   getRegistrationWindowController,
   createRegistrationWindowController,
@@ -22,57 +22,50 @@ import {
 
 const router = Router();
 
-router.use(extractUser);
+router.use(requireAdmin);
 
-router.get('/dashboard', requireAdmin, adminDashboard);
-router.post('/subjects', requireAdmin, createSubject);
-router.get('/subjects', requireAdmin, getSubjects);
-router.get('/subject-requests', requireAdmin, getSubjectRequests);
-router.patch('/subject-requests/:requestId', requireAdmin, reviewSubjectRequest);
+router.get('/dashboard', adminDashboard);
+router.post('/subjects', createSubject);
+router.get('/subjects', getSubjects);
+router.get('/subject-requests', getSubjectRequests);
+router.patch('/subject-requests/:requestId', reviewSubjectRequest);
 
 router.put(
   '/registration-window/:id',
-  requireAdmin,
   updateRegistrationWindowController
 );
 
 router.post(
   '/registration-window',
-  requireAdmin,
   createRegistrationWindowController
 );
 
 router.get(
   '/registration-window',
-  requireAdmin,
   getRegistrationWindowController
 );
 
-router.get('/students', requireAdmin, getAllStudentsController);
+router.get('/students', getAllStudentsController);
 
 router.get(
   '/students/:studentId/subjects',
-  requireAdmin,
   getStudentSubjectsController
 );
 
-router.get('/faculty', requireAdmin, getAllFacultyController);
+router.get('/faculty', getAllFacultyController);
 
 router.get(
   '/faculty/:facultyId/subjects',
-  requireAdmin,
   getFacultySubjectsController
 );
 
 router.delete(
   '/students/:accountId',
-  requireAdmin,
   removeStudentController
 );
 
 router.delete(
   '/faculty/:accountId',
-  requireAdmin,
   removeFacultyController
 );
 

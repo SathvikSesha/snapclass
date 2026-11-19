@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "test": "node --test tests/unit/*.test.js",
     "worker:email": "node src/workers/email.worker.js",
     "worker:materials": "node src/workers/materialIngestion.worker.js"
   },

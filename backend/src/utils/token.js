@@ -3,11 +3,17 @@ import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
 
 export function generateAccessToken(user) {
+  const payload = { role: user.role };
+  const name = user.full_name || user.fullName || user.name;
+  if (name) {
+    payload.name = name;
+  }
+
   return jwt.sign(
-    { role: user.role },
+    payload,
     env.jwtAccessSecret,
     {
-      subject: String(user.user_id),
+      subject: String(user.user_id || user.userId),
       jwtid: randomUUID(),
       expiresIn: env.jwtAccessExpiresIn,
       issuer: 'snapclass-auth',

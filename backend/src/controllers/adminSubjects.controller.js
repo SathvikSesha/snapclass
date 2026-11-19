@@ -1,18 +1,9 @@
 import * as adminSubjectsService from '../services/adminSubjects.service.js';
 
 const getAdminIdentity = (req) => {
-  const rawId =
-    req.user?.userId ??
-    req.user?.sub ??
-    (req.body?.adminUserId ? Number(req.body.adminUserId) : null) ??
-    (req.headers['x-admin-user-id'] ? Number(req.headers['x-admin-user-id']) : null);
-
+  const rawId = req.user?.userId ?? req.user?.sub;
   const adminUserId = rawId ? Number(rawId) : null;
-  const adminName =
-    req.user?.name ??
-    req.user?.fullName ??
-    req.body?.adminName ??
-    (req.headers['x-admin-name'] || null);
+  const adminName = req.user?.name ?? req.user?.fullName ?? null;
 
   return { adminUserId, adminName };
 };
